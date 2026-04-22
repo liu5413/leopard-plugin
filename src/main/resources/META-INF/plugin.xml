@@ -11,5 +11,16 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow factoryClass="com.github.liu5413.leopardplugin.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
         <postStartupActivity implementation="com.github.liu5413.leopardplugin.startup.MyProjectActivity" />
+        <notificationGroup id="FireRun" displayType="BALLOON"/>
     </extensions>
+
+    <actions>
+        <action id="FireRunAction"
+                class="com.github.liu5413.leopardplugin.actions.FireRunAction"
+                text="Fire Run"
+                description="Run with fire!">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
+    </actions>
 </idea-plugin>
