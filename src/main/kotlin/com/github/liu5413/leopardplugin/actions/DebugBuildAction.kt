@@ -1,5 +1,6 @@
 package com.github.liu5413.leopardplugin.actions
 
+import com.intellij.build.BuildContentManager
 import com.intellij.build.BuildViewManager
 import com.intellij.build.DefaultBuildDescriptor
 import com.intellij.build.events.MessageEvent
@@ -45,6 +46,8 @@ class DebugBuildAction : AnAction(
             buildId,
             StartBuildEventImpl(buildDescriptor, "$title: running...")
         )
+
+        BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
