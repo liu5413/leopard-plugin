@@ -21,5 +21,12 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+        <action id="DebugBuildAction"
+                class="com.github.liu5413.leopardplugin.actions.DebugBuildAction"
+                text="Debug Build"
+                description="Run gradle buildDebug">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
     </actions>
 </idea-plugin>
