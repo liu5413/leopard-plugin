@@ -11,7 +11,6 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow factoryClass="com.github.liu5413.leopardplugin.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
         <postStartupActivity implementation="com.github.liu5413.leopardplugin.startup.MyProjectActivity" />
-        <notificationGroup id="FireRun" displayType="BALLOON"/>
     </extensions>
 
     <actions>
