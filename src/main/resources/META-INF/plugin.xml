@@ -5,6 +5,7 @@
     <vendor>liu5413</vendor>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
 
     <resource-bundle>messages.MyBundle</resource-bundle>
 
@@ -32,6 +33,13 @@
                 class="com.github.liu5413.leopardplugin.actions.UninstallAction"
                 text="Uninstall App"
                 description="Uninstall app from device">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
+        <action id="CrashAction"
+                class="com.github.liu5413.leopardplugin.actions.CrashAction"
+                text="Crash Log"
+                description="Watch crash logs via adb logcat">
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>

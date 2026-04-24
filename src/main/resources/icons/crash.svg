@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Explosion/crash burst -->
+  <polygon points="8,1 9.5,5.5 14,4 10.5,7.5 15,10 10,9 11,14 8,10.5 5,14 6,9 1,10 5.5,7.5 2,4 6.5,5.5" fill="#E53935"/>
+  <!-- Exclamation mark -->
+  <rect x="7.2" y="5" width="1.6" height="4" rx="0.5" fill="#FFFFFF"/>
+  <circle cx="8" cy="11" r="0.9" fill="#FFFFFF"/>
+</svg>
