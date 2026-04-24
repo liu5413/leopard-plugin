@@ -36,6 +36,13 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+        <action id="ClaudeAction"
+                class="com.github.liu5413.leopardplugin.actions.ClaudeAction"
+                text="Claude Code"
+                description="Open Claude Code via cfuse">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
         <action id="CrashAction"
                 class="com.github.liu5413.leopardplugin.actions.CrashAction"
                 text="Crash Log"
