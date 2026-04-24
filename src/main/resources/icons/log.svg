@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Document body -->
+  <rect x="2" y="1" width="12" height="14" rx="1.5" fill="#42A5F5"/>
+  <!-- Log lines -->
+  <rect x="4" y="4" width="8" height="1.2" rx="0.4" fill="#FFFFFF"/>
+  <rect x="4" y="6.5" width="6" height="1.2" rx="0.4" fill="#FFFFFF"/>
+  <rect x="4" y="9" width="7" height="1.2" rx="0.4" fill="#FFFFFF"/>
+  <rect x="4" y="11.5" width="5" height="1.2" rx="0.4" fill="#FFFFFF"/>
+</svg>

@@ -50,5 +50,12 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+        <action id="LogAction"
+                class="com.github.liu5413.leopardplugin.actions.LogAction"
+                text="Logcat"
+                description="Capture logcat output to file">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
     </actions>
 </idea-plugin>
