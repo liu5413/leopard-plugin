@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Lid -->
+  <rect x="2" y="2.5" width="12" height="1.8" rx="0.5" fill="#D4A017"/>
+  <!-- Handle -->
+  <rect x="5.5" y="1" width="5" height="2" rx="0.8" fill="none" stroke="#D4A017" stroke-width="1.2"/>
+  <!-- Body -->
+  <path d="M3 4.8 L4 14 Q4 15 5 15 L11 15 Q12 15 12 14 L13 4.8 Z" fill="#D4A017"/>
+  <!-- Lines on body -->
+  <line x1="6" y1="7" x2="6" y2="12.5" stroke="#B8860B" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="8" y1="7" x2="8" y2="12.5" stroke="#B8860B" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="10" y1="7" x2="10" y2="12.5" stroke="#B8860B" stroke-width="0.9" stroke-linecap="round"/>
+</svg>

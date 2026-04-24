@@ -28,5 +28,12 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+        <action id="UninstallAction"
+                class="com.github.liu5413.leopardplugin.actions.UninstallAction"
+                text="Uninstall App"
+                description="Uninstall app from device">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
     </actions>
 </idea-plugin>
