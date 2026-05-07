@@ -38,6 +38,7 @@ class InstallAction : AnAction(
             showNoBuild(project, "APK file not found: ${apkFile.absolutePath}")
             return
         }
+        BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
         ApplicationManager.getApplication().executeOnPooledThread {
             val devices = getConnectedDevices(project)
             ApplicationManager.getApplication().invokeLater {

@@ -32,7 +32,7 @@ class UninstallAction : AnAction(
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-
+        BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
         ApplicationManager.getApplication().executeOnPooledThread {
             val devices = getConnectedDevices(project)
             ApplicationManager.getApplication().invokeLater {
