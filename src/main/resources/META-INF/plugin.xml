@@ -36,6 +36,13 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+        <action id="InstallAction"
+                class="com.github.liu5413.leopardplugin.actions.InstallAction"
+                text="Install App"
+                description="Install app to device">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
         <action id="ClaudeAction"
                 class="com.github.liu5413.leopardplugin.actions.ClaudeAction"
                 text="Claude Code"

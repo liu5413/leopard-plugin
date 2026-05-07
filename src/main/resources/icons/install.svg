@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Arrow down (download/install) -->
+  <path d="M8 2 L8 11 M8 11 L4 7 M8 11 L12 7" stroke="#4CAF50" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Bracket/box at bottom -->
+  <path d="M3 12 L3 14 Q3 15 4 15 L12 15 Q13 15 13 14 L13 12" stroke="#4CAF50" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+</svg>
