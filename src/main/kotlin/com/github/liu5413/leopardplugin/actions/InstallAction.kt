@@ -55,13 +55,14 @@ class InstallAction : AnAction(
     }
 
     private fun getConnectedDevices(project: Project): List<DeviceInfo> {
+        val adb = AdbHelper.resolveAdbPath(project)
         return try {
-            val adb = AdbHelper.resolveAdbPath(project)
             val process = ProcessBuilder(adb, "devices", "-l")
                 .redirectErrorStream(true)
                 .start()
             val output = process.inputStream.bufferedReader().readText()
             process.waitFor()
+            showBuildOutput(project, "Install", "$ $adb devices -l\n$output")
             output.lines()
                 .filter { it.isNotBlank() && !it.startsWith("List of") && !it.startsWith("*") && it.matches(Regex("^\\S+\\s+device\\b.*")) }
                 .mapNotNull { line ->
@@ -70,8 +71,7 @@ class InstallAction : AnAction(
                     DeviceInfo(serial, model)
                 }
         } catch (e: Exception) {
-            showNoBuild(project, "Exception:" + e.message)
-            showNoBuild(project, "Exception:$e")
+            showNoBuild(project, "Exception: ${e.message}")
             emptyList()
         }
     }
@@ -86,6 +86,21 @@ class InstallAction : AnAction(
             .setItemChosenCallback { device -> runInstall(project, device, apkFile) }
             .createPopup()
             .showCenteredInCurrentWindow(project)
+    }
+
+    private fun showBuildOutput(project: Project, title: String, message: String) {
+        val buildId = Object()
+        val buildDescriptor = DefaultBuildDescriptor(
+            buildId, title, project.basePath ?: "", System.currentTimeMillis()
+        )
+        val buildViewManager = project.getService(BuildViewManager::class.java)
+        buildViewManager.onEvent(buildId, StartBuildEventImpl(buildDescriptor, title))
+        BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
+        buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$message\n", true))
+        buildViewManager.onEvent(
+            buildId,
+            FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title done", SuccessResultImpl())
+        )
     }
 
     private fun showNoBuild(project: Project, message: String) {
