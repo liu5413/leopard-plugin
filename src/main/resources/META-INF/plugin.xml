@@ -50,6 +50,13 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+        <action id="CursorAction"
+                class="com.github.liu5413.leopardplugin.actions.CursorAction"
+                text="Cursor Agent"
+                description="Open Cursor agent">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
         <action id="CrashAction"
                 class="com.github.liu5413.leopardplugin.actions.CrashAction"
                 text="Crash Log"
