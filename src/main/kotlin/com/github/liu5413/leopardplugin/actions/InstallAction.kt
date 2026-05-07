@@ -16,6 +16,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.IconLoader
+import com.github.liu5413.leopardplugin.utils.AdbHelper
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -37,9 +38,8 @@ class InstallAction : AnAction(
             showNoBuild(project, "APK file not found: ${apkFile.absolutePath}")
             return
         }
-
         ApplicationManager.getApplication().executeOnPooledThread {
-            val devices = getConnectedDevices()
+            val devices = getConnectedDevices(project)
             ApplicationManager.getApplication().invokeLater {
                 when {
                     devices.isEmpty() -> showNoBuild(project, "No connected devices found")
@@ -54,9 +54,10 @@ class InstallAction : AnAction(
         e.presentation.isEnabledAndVisible = e.project != null
     }
 
-    private fun getConnectedDevices(): List<DeviceInfo> {
+    private fun getConnectedDevices(project: Project): List<DeviceInfo> {
         return try {
-            val process = ProcessBuilder("adb", "devices", "-l")
+            val adb = AdbHelper.resolveAdbPath(project)
+            val process = ProcessBuilder(adb, "devices", "-l")
                 .redirectErrorStream(true)
                 .start()
             val output = process.inputStream.bufferedReader().readText()
@@ -69,6 +70,8 @@ class InstallAction : AnAction(
                     DeviceInfo(serial, model)
                 }
         } catch (e: Exception) {
+            showNoBuild(project, "Exception:" + e.message)
+            showNoBuild(project, "Exception:$e")
             emptyList()
         }
     }
@@ -119,7 +122,8 @@ class InstallAction : AnAction(
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val cmd = "adb -s ${device.serial} install -r \"${apkFile.absolutePath}\""
+                val adb = AdbHelper.resolveAdbPath(project)
+                val cmd = "$adb -s ${device.serial} install -r \"${apkFile.absolutePath}\""
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ $cmd\n", true))
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "APK: ${apkFile.name}\n", true))
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n\n", true))
@@ -128,7 +132,7 @@ class InstallAction : AnAction(
                     MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Installing ${apkFile.name} to ${device.model}...", null)
                 )
 
-                val process = ProcessBuilder("adb", "-s", device.serial, "install", "-r", apkFile.absolutePath)
+                val process = ProcessBuilder(adb, "-s", device.serial, "install", "-r", apkFile.absolutePath)
                     .directory(File(basePath))
                     .redirectErrorStream(true)
                     .start()

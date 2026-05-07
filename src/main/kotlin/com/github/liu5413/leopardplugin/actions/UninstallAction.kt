@@ -16,6 +16,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.IconLoader
+import com.github.liu5413.leopardplugin.utils.AdbHelper
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -33,7 +34,7 @@ class UninstallAction : AnAction(
         val project = e.project ?: return
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val devices = getConnectedDevices()
+            val devices = getConnectedDevices(project)
             ApplicationManager.getApplication().invokeLater {
                 when {
                     devices.isEmpty() -> showNoBuild(project, "No connected devices found")
@@ -48,9 +49,10 @@ class UninstallAction : AnAction(
         e.presentation.isEnabledAndVisible = e.project != null
     }
 
-    private fun getConnectedDevices(): List<DeviceInfo> {
+    private fun getConnectedDevices(project: Project): List<DeviceInfo> {
         return try {
-            val process = ProcessBuilder("adb", "devices", "-l")
+            val adb = AdbHelper.resolveAdbPath(project)
+            val process = ProcessBuilder(adb, "devices", "-l")
                 .redirectErrorStream(true)
                 .start()
             val output = process.inputStream.bufferedReader().readText()
@@ -113,7 +115,8 @@ class UninstallAction : AnAction(
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val cmd = "adb -s ${device.serial} uninstall $PACKAGE_NAME"
+                val adb = AdbHelper.resolveAdbPath(project)
+                val cmd = "$adb -s ${device.serial} uninstall $PACKAGE_NAME"
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ $cmd\n", true))
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n\n", true))
                 buildViewManager.onEvent(
@@ -121,7 +124,7 @@ class UninstallAction : AnAction(
                     MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Uninstalling $PACKAGE_NAME from ${device.model}...", null)
                 )
 
-                val process = ProcessBuilder("adb", "-s", device.serial, "uninstall", PACKAGE_NAME)
+                val process = ProcessBuilder(adb, "-s", device.serial, "uninstall", PACKAGE_NAME)
                     .directory(File(basePath))
                     .redirectErrorStream(true)
                     .start()
