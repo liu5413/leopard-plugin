@@ -6,12 +6,14 @@
 
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
+    <depends>com.intellij.gradle</depends>
 
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow factoryClass="com.github.liu5413.leopardplugin.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
         <postStartupActivity implementation="com.github.liu5413.leopardplugin.startup.MyProjectActivity" />
+        <projectService serviceImplementation="com.github.liu5413.leopardplugin.settings.BuildNotificationSettings"/>
     </extensions>
 
     <actions>
@@ -68,6 +70,13 @@
                 class="com.github.liu5413.leopardplugin.actions.LogAction"
                 text="Logcat"
                 description="Capture logcat output to file">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
+        <action id="BuildNotificationToggleAction"
+                class="com.github.liu5413.leopardplugin.actions.BuildNotificationToggleAction"
+                text="Build Sound Notification"
+                description="Toggle sound notification on Gradle build completion">
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
