@@ -38,6 +38,13 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+        <action id="ClearDataAction"
+                class="com.github.liu5413.leopardplugin.actions.ClearDataAction"
+                text="Clear Data"
+                description="Clear app data on device">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
         <action id="InstallAction"
                 class="com.github.liu5413.leopardplugin.actions.InstallAction"
                 text="Install App"
