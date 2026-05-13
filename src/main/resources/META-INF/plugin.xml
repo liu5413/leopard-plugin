@@ -14,6 +14,8 @@
         <toolWindow factoryClass="com.github.liu5413.leopardplugin.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
         <postStartupActivity implementation="com.github.liu5413.leopardplugin.startup.MyProjectActivity" />
         <projectService serviceImplementation="com.github.liu5413.leopardplugin.settings.BuildNotificationSettings"/>
+        <projectService serviceImplementation="com.github.liu5413.leopardplugin.settings.LogViewerSettings"/>
+        <toolWindow factoryClass="com.github.liu5413.leopardplugin.toolWindow.PreviewLogToolWindowFactory" id="LogViewer" anchor="bottom" icon="/icons/preview-log.svg"/>
     </extensions>
 
     <actions>
@@ -77,6 +79,13 @@
                 class="com.github.liu5413.leopardplugin.actions.LogAction"
                 text="Logcat"
                 description="Capture logcat output to file">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
+        <action id="PreviewLogAction"
+                class="com.github.liu5413.leopardplugin.actions.PreviewLogAction"
+                text="Preview Log"
+                description="Open log viewer with filtering and highlighting">
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
