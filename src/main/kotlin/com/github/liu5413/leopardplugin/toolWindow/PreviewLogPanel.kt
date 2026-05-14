@@ -230,10 +230,15 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
         parentPanel: JPanel,
         rowsList: MutableList<KeywordRow>
     ): KeywordRow {
-        val textField = JTextField(initialValue, 25)
+        val textField = JTextField(initialValue).apply {
+            preferredSize = Dimension(150, 28)
+            minimumSize = Dimension(50, 28)
+        }
 
         val historyCombo = ComboBox<String>().apply {
             refreshHistory(this)
+            preferredSize = Dimension(150, 28)
+            maximumSize = Dimension(150, 28)
             addActionListener { e ->
                 if (e.actionCommand == "comboBoxChanged") {
                     val selected = selectedItem as? String ?: return@addActionListener
@@ -242,9 +247,13 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
             }
         }
 
+        val buttonSize = Dimension(28, 28)
+
         val deleteHistoryBtn = JButton("✕").apply {
             toolTipText = "Delete from history"
-            margin = Insets(0, 2, 0, 2)
+            preferredSize = buttonSize
+            maximumSize = buttonSize
+            minimumSize = buttonSize
             addActionListener {
                 val selected = historyCombo.selectedItem as? String ?: return@addActionListener
                 settings.removeFromHistory(selected)
@@ -254,7 +263,9 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
 
         val removeRowBtn = JButton("−").apply {
             toolTipText = "Remove this row"
-            margin = Insets(0, 2, 0, 2)
+            preferredSize = buttonSize
+            maximumSize = buttonSize
+            minimumSize = buttonSize
             addActionListener {
                 val row = rowsList.find { it.textField == textField } ?: return@addActionListener
                 parentPanel.remove(row.panel)
@@ -264,11 +275,34 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
             }
         }
 
-        val panel = JPanel(FlowLayout(FlowLayout.LEFT, 2, 2)).apply {
-            add(textField)
-            add(historyCombo)
-            add(deleteHistoryBtn)
-            add(removeRowBtn)
+        val panel = JPanel(GridBagLayout()).apply {
+            val gbc = GridBagConstraints().apply {
+                fill = GridBagConstraints.BOTH
+                insets = Insets(0, 0, 0, 4)
+            }
+
+            // Text field: 60% width
+            gbc.gridx = 0
+            gbc.weightx = 0.6
+            add(textField, gbc)
+
+            // History combo: 40% width (minus button widths)
+            gbc.gridx = 1
+            gbc.weightx = 0.4
+            gbc.insets = Insets(0, 0, 0, 4)
+            add(historyCombo, gbc)
+
+            // Buttons: fixed size
+            gbc.gridx = 2
+            gbc.weightx = 0.0
+            gbc.insets = Insets(0, 0, 0, 2)
+            add(deleteHistoryBtn, gbc)
+
+            gbc.gridx = 3
+            gbc.insets = Insets(0, 0, 0, 0)
+            add(removeRowBtn, gbc)
+
+            maximumSize = Dimension(Int.MAX_VALUE, 32)
         }
 
         textField.addActionListener {
