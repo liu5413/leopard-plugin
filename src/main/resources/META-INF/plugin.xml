@@ -47,6 +47,13 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+        <action id="KillProcessAction"
+                class="com.github.liu5413.leopardplugin.actions.KillProcessAction"
+                text="Kill Process"
+                description="Kill app process on device">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
         <action id="InstallAction"
                 class="com.github.liu5413.leopardplugin.actions.InstallAction"
                 text="Install App"
