@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 48 48" fill="none">
+  <!-- 原播放按钮图标 -->
+  <circle cx="24" cy="24" r="18" stroke="#000000" stroke-width="4" fill="none"/>
+  <polygon points="20,16 20,32 32,24" fill="#000000"/>
+
+  <!-- 右下角绿色 debug 虫子 (放大) -->
+  <g transform="translate(22, 22)">
+    <!-- 虫子身体 -->
+    <ellipse cx="14" cy="12" rx="7" ry="8" fill="#4CAF50"/>
+    <!-- 虫子头部 -->
+    <circle cx="14" cy="5" r="4" fill="#4CAF50"/>
+    <!-- 触角 -->
+    <line x1="11" y1="2" x2="8" y2="-2" stroke="#4CAF50" stroke-width="2" stroke-linecap="round"/>
+    <line x1="17" y1="2" x2="20" y2="-2" stroke="#4CAF50" stroke-width="2" stroke-linecap="round"/>
+    <!-- 腿 -->
+    <line x1="7" y1="9" x2="3" y2="7" stroke="#4CAF50" stroke-width="2" stroke-linecap="round"/>
+    <line x1="7" y1="13" x2="3" y2="15" stroke="#4CAF50" stroke-width="2" stroke-linecap="round"/>
+    <line x1="21" y1="9" x2="25" y2="7" stroke="#4CAF50" stroke-width="2" stroke-linecap="round"/>
+    <line x1="21" y1="13" x2="25" y2="15" stroke="#4CAF50" stroke-width="2" stroke-linecap="round"/>
+  </g>
+</svg>

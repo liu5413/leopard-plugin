@@ -61,6 +61,13 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+        <action id="StartAppWithDebuggerAction"
+                class="com.github.liu5413.leopardplugin.actions.StartAppWithDebuggerAction"
+                text="Start App with Debugger"
+                description="Start app on device and wait for debugger">
+            <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
         <action id="InstallAction"
                 class="com.github.liu5413.leopardplugin.actions.InstallAction"
                 text="Install App"
