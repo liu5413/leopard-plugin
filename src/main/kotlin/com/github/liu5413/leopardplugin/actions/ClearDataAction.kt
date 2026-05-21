@@ -17,6 +17,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.IconLoader
 import com.github.liu5413.leopardplugin.utils.AdbHelper
+import com.github.liu5413.leopardplugin.utils.AppConstants
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -26,9 +27,6 @@ class ClearDataAction : AnAction(
     "Clear app data on device",
     IconLoader.getIcon("/icons/clearData.svg", ClearDataAction::class.java)
 ) {
-    companion object {
-        private const val PACKAGE_NAME = "com.antgroup.leopard.android"
-    }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
@@ -116,15 +114,15 @@ class ClearDataAction : AnAction(
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val adb = AdbHelper.resolveAdbPath(project)
-                val cmd = "$adb -s ${device.serial} shell pm clear $PACKAGE_NAME"
+                val cmd = "$adb -s ${device.serial} shell pm clear $AppConstants.PACKAGE_NAME"
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ $cmd\n", true))
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n\n", true))
                 buildViewManager.onEvent(
                     buildId,
-                    MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Clearing data for $PACKAGE_NAME on ${device.model}...", null)
+                    MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Clearing data for $AppConstants.PACKAGE_NAME on ${device.model}...", null)
                 )
 
-                val process = ProcessBuilder(adb, "-s", device.serial, "shell", "pm", "clear", PACKAGE_NAME)
+                val process = ProcessBuilder(adb, "-s", device.serial, "shell", "pm", "clear", AppConstants.PACKAGE_NAME)
                     .directory(File(basePath))
                     .redirectErrorStream(true)
                     .start()

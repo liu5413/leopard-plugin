@@ -17,6 +17,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.IconLoader
 import com.github.liu5413.leopardplugin.utils.AdbHelper
+import com.github.liu5413.leopardplugin.utils.AppConstants
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -26,10 +27,6 @@ class StartAppAction : AnAction(
     "Start app on device",
     IconLoader.getIcon("/icons/startApp.svg", StartAppAction::class.java)
 ) {
-    companion object {
-        private const val PACKAGE_NAME = "com.antgroup.leopard.android"
-        private const val MAIN_ACTIVITY = "$PACKAGE_NAME/com.antgroup.leopard.MainActivity"
-    }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
@@ -117,15 +114,15 @@ class StartAppAction : AnAction(
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val adb = AdbHelper.resolveAdbPath(project)
-                val cmd = "$adb -s ${device.serial} shell am start -n $MAIN_ACTIVITY"
+                val cmd = "$adb -s ${device.serial} shell am start -n $AppConstants.MAIN_ACTIVITY"
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ $cmd\n", true))
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n\n", true))
                 buildViewManager.onEvent(
                     buildId,
-                    MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Starting app $PACKAGE_NAME on ${device.model}...", null)
+                    MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Starting app $AppConstants.PACKAGE_NAME on ${device.model}...", null)
                 )
 
-                val process = ProcessBuilder(adb, "-s", device.serial, "shell", "am", "start", "-n", MAIN_ACTIVITY)
+                val process = ProcessBuilder(adb, "-s", device.serial, "shell", "am", "start", "-n", AppConstants.MAIN_ACTIVITY)
                     .directory(File(basePath))
                     .redirectErrorStream(true)
                     .start()
