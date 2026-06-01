@@ -114,12 +114,12 @@ class UninstallAction : AnAction(
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val adb = AdbHelper.resolveAdbPath(project)
-                val cmd = "$adb -s ${device.serial} uninstall $AppConstants.PACKAGE_NAME"
+                val cmd = "$adb -s ${device.serial} uninstall ${AppConstants.PACKAGE_NAME}"
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ $cmd\n", true))
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n\n", true))
                 buildViewManager.onEvent(
                     buildId,
-                    MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Uninstalling $AppConstants.PACKAGE_NAME from ${device.model}...", null)
+                    MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Uninstalling ${AppConstants.PACKAGE_NAME} from ${device.model}...", null)
                 )
 
                 val process = ProcessBuilder(adb, "-s", device.serial, "uninstall", AppConstants.PACKAGE_NAME)

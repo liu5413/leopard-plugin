@@ -114,12 +114,12 @@ class KillProcessAction : AnAction(
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val adb = AdbHelper.resolveAdbPath(project)
-                val cmd = "$adb -s ${device.serial} shell am force-stop $AppConstants.PACKAGE_NAME"
+                val cmd = "$adb -s ${device.serial} shell am force-stop ${AppConstants.PACKAGE_NAME}"
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ $cmd\n", true))
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n\n", true))
                 buildViewManager.onEvent(
                     buildId,
-                    MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Killing process $AppConstants.PACKAGE_NAME on ${device.model}...", null)
+                    MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Killing process ${AppConstants.PACKAGE_NAME} on ${device.model}...", null)
                 )
 
                 val process = ProcessBuilder(adb, "-s", device.serial, "shell", "am", "force-stop", AppConstants.PACKAGE_NAME)
