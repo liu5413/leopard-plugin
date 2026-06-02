@@ -16,16 +16,19 @@
         <projectService serviceImplementation="com.github.liu5413.leopardplugin.settings.BuildNotificationSettings"/>
         <projectService serviceImplementation="com.github.liu5413.leopardplugin.settings.LogViewerSettings"/>
         <toolWindow factoryClass="com.github.liu5413.leopardplugin.toolWindow.PreviewLogToolWindowFactory" id="LogViewer" anchor="bottom" icon="/icons/preview-log.svg"/>
+        <toolWindow factoryClass="com.alipay.devtools.mockdata.MockDataToolWindowFactory" id="Test" anchor="right" secondary="true"/>
+        <projectService serviceImplementation="com.alipay.devtools.mockdata.MockDataService"/>
+        <postStartupActivity implementation="com.alipay.devtools.mockdata.startup.MockDataAutoConnectStarter"/>
     </extensions>
 
     <actions>
-        <action id="FireRunAction"
-                class="com.github.liu5413.leopardplugin.actions.FireRunAction"
-                text="Fire Run"
-                description="Run with fire!">
-            <add-to-group group-id="MainToolbarRight" anchor="first"/>
-            <add-to-group group-id="NavBarToolBar" anchor="last"/>
-        </action>
+<!--        <action id="FireRunAction"-->
+<!--                class="com.github.liu5413.leopardplugin.actions.FireRunAction"-->
+<!--                text="Fire Run"-->
+<!--                description="Run with fire!">-->
+<!--            <add-to-group group-id="MainToolbarRight" anchor="first"/>-->
+<!--            <add-to-group group-id="NavBarToolBar" anchor="last"/>-->
+<!--        </action>-->
         <action id="DebugBuildAction"
                 class="com.github.liu5413.leopardplugin.actions.DebugBuildAction"
                 text="Debug Build"
@@ -89,27 +92,28 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
-        <action id="CrashAction"
-                class="com.github.liu5413.leopardplugin.actions.CrashAction"
-                text="Crash Log"
-                description="Watch crash logs via adb logcat">
+        <!-- 日志类下拉:Crash / Logcat / Preview Log 三个之前各自占一格,合并成一个 popup group -->
+        <group id="LeopardLogMenu"
+               class="com.intellij.openapi.actionSystem.DefaultActionGroup"
+               text="日志"
+               description="日志相关操作"
+               icon="/icons/preview-log.svg"
+               popup="true">
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
-        </action>
-        <action id="LogAction"
-                class="com.github.liu5413.leopardplugin.actions.LogAction"
-                text="Logcat"
-                description="Capture logcat output to file">
-            <add-to-group group-id="MainToolbarRight" anchor="first"/>
-            <add-to-group group-id="NavBarToolBar" anchor="last"/>
-        </action>
-        <action id="PreviewLogAction"
-                class="com.github.liu5413.leopardplugin.actions.PreviewLogAction"
-                text="Preview Log"
-                description="Open log viewer with filtering and highlighting">
-            <add-to-group group-id="MainToolbarRight" anchor="first"/>
-            <add-to-group group-id="NavBarToolBar" anchor="last"/>
-        </action>
+            <action id="PreviewLogAction"
+                    class="com.github.liu5413.leopardplugin.actions.PreviewLogAction"
+                    text="Preview Log"
+                    description="Open log viewer with filtering and highlighting"/>
+            <action id="LogAction"
+                    class="com.github.liu5413.leopardplugin.actions.LogAction"
+                    text="Logcat"
+                    description="Capture logcat output to file"/>
+            <action id="CrashAction"
+                    class="com.github.liu5413.leopardplugin.actions.CrashAction"
+                    text="Crash Log"
+                    description="Watch crash logs via adb logcat"/>
+        </group>
         <action id="BuildNotificationToggleAction"
                 class="com.github.liu5413.leopardplugin.actions.BuildNotificationToggleAction"
                 text="Build Sound Notification"
@@ -117,5 +121,50 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
+
+        <!-- MockData Actions -->
+<!--        <action id="MockDataAutoConnectAction"-->
+<!--                class="com.alipay.devtools.mockdata.actions.MockDataAutoConnectAction"-->
+<!--                text="🚀 MockData Auto Connect"-->
+<!--                description="Automatically connect to MockData on device">-->
+<!--            <add-to-group group-id="MainToolbarRight" anchor="first"/>-->
+<!--            <add-to-group group-id="NavBarToolBar" anchor="last"/>-->
+<!--        </action>-->
+        <action id="MockDataSwitchEnvAction"
+                class="com.alipay.devtools.mockdata.actions.MockDataSwitchEnvAction"
+                text="MockData: Switch Env"
+                description="Switch MockData environment">
+            <add-to-group group-id="MainToolbarLeft" anchor="last"/>
+        </action>
+        <action id="MockDataEnvTagLabel"
+                class="com.alipay.devtools.mockdata.actions.MockDataEnvTagLabel"
+                text="MockData ENV Label"
+                description="只读 JBLabel 样式 tag">
+            <add-to-group group-id="MainToolbarLeft" anchor="after" relative-to-action="MockDataSwitchEnvAction"/>
+        </action>
+<!--        <action id="MockDataEnvTagChip"-->
+<!--                class="com.alipay.devtools.mockdata.actions.MockDataEnvTagChip"-->
+<!--                text="MockData ENV Chip"-->
+<!--                description="圆角带色 chip 样式 tag">-->
+<!--            <add-to-group group-id="MainToolbarLeft" anchor="after" relative-to-action="MockDataEnvTagLabel"/>-->
+<!--        </action>-->
+<!--        <action id="MockDataRpcAction"-->
+<!--                class="com.alipay.devtools.mockdata.actions.MockDataRpcAction"-->
+<!--                text="MockData: Mock RPC"-->
+<!--                description="Mock RPC response">-->
+<!--            <add-to-group group-id="MainToolbarRight" anchor="first"/>-->
+<!--        </action>-->
+<!--        <action id="MockDataLbsAction"-->
+<!--                class="com.alipay.devtools.mockdata.actions.MockDataLbsAction"-->
+<!--                text="MockData: Mock LBS"-->
+<!--                description="Mock location">-->
+<!--            <add-to-group group-id="MainToolbarRight" anchor="first"/>-->
+<!--        </action>-->
+<!--        <action id="MockDataScreenshotAction"-->
+<!--                class="com.alipay.devtools.mockdata.actions.MockDataScreenshotAction"-->
+<!--                text="MockData: Screenshot"-->
+<!--                description="Take device screenshot">-->
+<!--            <add-to-group group-id="MainToolbarRight" anchor="first"/>-->
+<!--        </action>-->
     </actions>
 </idea-plugin>
