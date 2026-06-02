@@ -127,24 +127,24 @@ class ClearDataAction : AnAction(
                     .redirectErrorStream(true)
                     .start()
 
+                val outputBuilder = StringBuilder()
                 BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
                     var line: String?
                     while (reader.readLine().also { line = it } != null) {
+                        outputBuilder.append(line).append('\n')
                         buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, line + "\n", true))
                     }
                 }
 
                 val exitCode = process.waitFor()
-                if (exitCode == 0) {
+                val clearSucceeded = exitCode == 0 && outputBuilder.toString().contains("Success")
+                if (clearSucceeded) {
                     buildViewManager.onEvent(
                         buildId,
                         FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title finished successfully", SuccessResultImpl())
                     )
                 } else {
-                    buildViewManager.onEvent(
-                        buildId,
-                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title failed with exit code $exitCode", FailureResultImpl())
-                    )
+                    runFallbackOpenSettings(project, device, adb, basePath, buildId, buildViewManager, title, exitCode)
                 }
             } catch (ex: Exception) {
                 buildViewManager.onEvent(
@@ -152,6 +152,100 @@ class ClearDataAction : AnAction(
                     FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "Error: ${ex.message}", FailureResultImpl(ex))
                 )
             }
+        }
+    }
+
+    private fun runFallbackOpenSettings(
+        project: Project,
+        device: DeviceInfo,
+        adb: String,
+        basePath: String,
+        buildId: Any,
+        buildViewManager: BuildViewManager,
+        title: String,
+        clearExitCode: Int
+    ) {
+        try {
+            buildViewManager.onEvent(
+                buildId,
+                MessageEventImpl(
+                    buildId,
+                    MessageEvent.Kind.WARNING,
+                    null,
+                    "pm clear failed (exit code $clearExitCode). Falling back to open app storage settings...",
+                    null
+                )
+            )
+
+            val fallbackCmd = "$adb -s ${device.serial} shell am start " +
+                "-a android.settings.APPLICATION_DETAILS_SETTINGS " +
+                "-d package:${AppConstants.PACKAGE_NAME} " +
+                "--es \":settings:fragment_args_key\" storage"
+            buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "\n$ $fallbackCmd\n", true))
+
+            val fallbackProcess = ProcessBuilder(
+                adb, "-s", device.serial, "shell", "am", "start",
+                "-a", "android.settings.APPLICATION_DETAILS_SETTINGS",
+                "-d", "package:${AppConstants.PACKAGE_NAME}",
+                "--es", ":settings:fragment_args_key", "storage"
+            )
+                .directory(File(basePath))
+                .redirectErrorStream(true)
+                .start()
+
+            val fallbackOutput = StringBuilder()
+            BufferedReader(InputStreamReader(fallbackProcess.inputStream)).use { reader ->
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    fallbackOutput.append(line).append('\n')
+                    buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, line + "\n", true))
+                }
+            }
+
+            val fallbackExitCode = fallbackProcess.waitFor()
+            val fallbackText = fallbackOutput.toString()
+            val fallbackSucceeded = fallbackExitCode == 0 &&
+                !fallbackText.contains("Error", ignoreCase = true) &&
+                !fallbackText.contains("Exception", ignoreCase = true)
+
+            if (fallbackSucceeded) {
+                buildViewManager.onEvent(
+                    buildId,
+                    MessageEventImpl(
+                        buildId,
+                        MessageEvent.Kind.WARNING,
+                        null,
+                        "pm clear failed; app storage settings opened on ${device.model}. Please clear data manually.",
+                        null
+                    )
+                )
+                buildViewManager.onEvent(
+                    buildId,
+                    FinishBuildEventImpl(
+                        buildId,
+                        null,
+                        System.currentTimeMillis(),
+                        "$title finished with warnings (manual action required)",
+                        SuccessResultImpl()
+                    )
+                )
+            } else {
+                buildViewManager.onEvent(
+                    buildId,
+                    FinishBuildEventImpl(
+                        buildId,
+                        null,
+                        System.currentTimeMillis(),
+                        "$title failed (pm clear exit=$clearExitCode, fallback exit=$fallbackExitCode)",
+                        FailureResultImpl()
+                    )
+                )
+            }
+        } catch (ex: Exception) {
+            buildViewManager.onEvent(
+                buildId,
+                FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "Error during fallback: ${ex.message}", FailureResultImpl(ex))
+            )
         }
     }
 
