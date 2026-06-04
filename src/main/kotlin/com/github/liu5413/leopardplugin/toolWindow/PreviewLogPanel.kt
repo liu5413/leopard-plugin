@@ -36,7 +36,8 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
     private val containsRows = mutableListOf<KeywordRow>()
     private val delimitersRowsPanel = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
     private val containsRowsPanel = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
-    private val consoleView: ConsoleViewImpl
+    private var consoleView: ConsoleViewImpl
+    private val consoleContainer: JPanel
 
     /**
      * Custom ConsoleViewContentType for delimiter background colors.
@@ -151,6 +152,7 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
 
         // Console
+        System.setProperty("idea.cycle.buffer.size", "102400")
         consoleView = ConsoleViewImpl(project, true)
 
         // Buttons
@@ -170,9 +172,10 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
 
         // Layout
+        consoleContainer = JPanel(BorderLayout()).apply { add(consoleView.component, BorderLayout.CENTER) }
         add(configPanel, BorderLayout.NORTH)
         add(buttonPanel, BorderLayout.WEST)
-        add(consoleView.component, BorderLayout.CENTER)
+        add(consoleContainer, BorderLayout.CENTER)
 
         // Init
         loadSavedState()
@@ -346,7 +349,13 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
         //   W/ or W  → yellow
         //   E/ or E or Exception/Crash → red
         //   default  → blue
-        consoleView.clear()
+        consoleView.dispose()
+        consoleView = ConsoleViewImpl(project, true)
+        consoleContainer.removeAll()
+        consoleContainer.add(consoleView.component, BorderLayout.CENTER)
+        consoleContainer.revalidate()
+        consoleContainer.repaint()
+
         for ((index, line) in filtered) {
             val msg = "行 ${index + 1}: $line"
             val segments = LogFilter.segmentString(msg, delimiters)
