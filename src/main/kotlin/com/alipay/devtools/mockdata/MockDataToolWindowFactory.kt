@@ -41,23 +41,35 @@ class MockDataPanel(private val project: Project) : JPanel(BorderLayout()) {
     init {
         val tabbedPane = JBTabbedPane()
 
+        // 环境切换面板
+//        tabbedPane.addTab("环境", createEnvPanel())
+
+        // 伙伴打包面板
+        tabbedPane.addTab("伙伴", HuobanPanel(project))
+
         // 连接面板
         tabbedPane.addTab("连接", createConnectionPanel())
 
-        // 环境切换面板
-        tabbedPane.addTab("环境", createEnvPanel())
-
         // Mock 面板
-        tabbedPane.addTab("Mock", createMockPanel())
+//        tabbedPane.addTab("Mock", createMockPanel())
 
         // 设备控制面板
-        tabbedPane.addTab("设备", createDevicePanel())
+//        tabbedPane.addTab("设备", createDevicePanel())
 
         // 文件面板
-        tabbedPane.addTab("文件", createFilePanel())
+//        tabbedPane.addTab("文件", createFilePanel())
 
+        val logScrollPane = JScrollPane(logArea)
         add(tabbedPane, BorderLayout.CENTER)
-        add(JScrollPane(logArea), BorderLayout.SOUTH)
+        add(logScrollPane, BorderLayout.SOUTH)
+
+        // "伙伴" tab (index 0) 有自己的日志区域，隐藏父级 logArea
+        tabbedPane.addChangeListener {
+            logScrollPane.isVisible = tabbedPane.selectedIndex != 0
+            revalidate()
+        }
+        // 初始状态也检查一次
+        logScrollPane.isVisible = tabbedPane.selectedIndex != 0
     }
 
     private fun createConnectionPanel(): JPanel {
