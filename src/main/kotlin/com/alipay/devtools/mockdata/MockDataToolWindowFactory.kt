@@ -149,7 +149,7 @@ class MockDataPanel(private val project: Project) : JPanel(BorderLayout()) {
             alignmentX = JComponent.LEFT_ALIGNMENT
         }
         val forceLogoutBtn = JButton("踢登")
-        forceLogoutBtn.toolTipText = "发送 LP_FORCE_LOGOUT 广播,强制登出当前用户"
+        forceLogoutBtn.toolTipText = "强制登出当前用户,1.1.20及版本以上"
         forceLogoutBtn.addActionListener {
             if (!service.isConnected()) {
                 log("❌ 踢登失败: 当前未连接设备")

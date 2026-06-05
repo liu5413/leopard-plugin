@@ -33,7 +33,7 @@ dependencies {
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdeaCommunity("2025.1")
+        intellijIdeaCommunity("2024.2")
         bundledPlugin("org.jetbrains.plugins.terminal")
         bundledPlugin("com.intellij.gradle")
         testFramework(TestFrameworkType.Platform)
@@ -54,6 +54,11 @@ intellijPlatform {
                 }
                 subList(indexOf(start) + 1, indexOf(end)).joinToString("\n").let(::markdownToHTML)
             }
+        }
+
+        ideaVersion {
+            sinceBuild = "242"
+            untilBuild = provider { null }
         }
 
         val changelog = project.changelog // local variable for configuration cache compatibility

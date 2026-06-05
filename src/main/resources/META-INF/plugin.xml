@@ -2,7 +2,7 @@
 <idea-plugin>
     <id>com.github.liu5413.leopardplugin</id>
     <name>leopard-plugin</name>
-    <vendor>liu5413</vendor>
+    <vendor>开中</vendor>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
@@ -16,7 +16,7 @@
         <projectService serviceImplementation="com.github.liu5413.leopardplugin.settings.BuildNotificationSettings"/>
         <projectService serviceImplementation="com.github.liu5413.leopardplugin.settings.LogViewerSettings"/>
         <toolWindow factoryClass="com.github.liu5413.leopardplugin.toolWindow.PreviewLogToolWindowFactory" id="LogViewer" anchor="bottom" icon="/icons/preview-log.svg"/>
-        <toolWindow factoryClass="com.alipay.devtools.mockdata.MockDataToolWindowFactory" id="Test" anchor="right" secondary="true"/>
+        <toolWindow factoryClass="com.alipay.devtools.mockdata.MockDataToolWindowFactory" id="灵光" anchor="right" secondary="true"/>
         <projectService serviceImplementation="com.alipay.devtools.mockdata.MockDataService"/>
         <postStartupActivity implementation="com.alipay.devtools.mockdata.startup.MockDataAutoConnectStarter"/>
     </extensions>

@@ -35,7 +35,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         preferredSize = Dimension(200, preferredSize.height)
     }
     private val sprintCombo = ComboBox<SprintItem>().apply {
-        preferredSize = Dimension(350, preferredSize.height)
+        preferredSize = Dimension(256, preferredSize.height)
         renderer = object : DefaultListCellRenderer() {
             override fun getListCellRendererComponent(
                 list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
@@ -98,6 +98,16 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         val versionPanel = JPanel(FlowLayout(FlowLayout.LEFT)).apply { alignmentX = LEFT_ALIGNMENT }
         versionPanel.add(JLabel("版本:"))
         versionPanel.add(versionCombo)
+        versionPanel.add(JButton("↻").apply {
+            toolTipText = "刷新迭代列表"
+            preferredSize = Dimension(50, preferredSize.height)
+            addActionListener {
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    resolvedCliPath = null
+                    loadVersions()
+                }
+            }
+        })
         topPanel.add(versionPanel)
 
         val sprintPanel = JPanel(FlowLayout(FlowLayout.LEFT)).apply { alignmentX = LEFT_ALIGNMENT }
@@ -355,7 +365,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
     }
 
-    private fun loadVersions() {
+    private fun loadVersions(retryCount: Int = 0) {
         try {
             log("正在加载版本列表...")
             val output = runCli("sprint", "list", "--product-name=LEOPARD", "--type=all", "--page-size=100")
@@ -424,7 +434,13 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                 log("✅已加载 ${versions.size} 个版本, ${sprints.size} 个迭代")
             }
         } catch (e: Exception) {
-            log("❌加载版本失败: ${e.message}")
+            if (retryCount < 2) {
+                log("加载版本失败，${retryCount + 3}s 后重试...")
+                Thread.sleep((retryCount + 3) * 1000L)
+                loadVersions(retryCount + 3)
+            } else {
+                log("❌加载版本失败: ${e.message}")
+            }
         }
     }
 
@@ -518,7 +534,8 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         if (url.isNotEmpty()) {
             val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
             clipboard.setContents(java.awt.datatransfer.StringSelection(url), null)
-            log("✅已复制下载链接: $url")
+            val version = packageTableModel.getValueAt(row, 0) as? String ?: ""
+            log("✅已复制下载链接（$version）: \n$url")
         } else {
             log("该安装包暂无下载链接")
         }
@@ -533,9 +550,8 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
 
         val version = packageTableModel.getValueAt(row, 0) as? String ?: ""
-        val type = packageTableModel.getValueAt(row, 2) as? String ?: ""
-        val time = packageTableModel.getValueAt(row, 4) as? String ?: ""
 
+        try {
         val qrImage = generateQrImage(url, 200)
         if (qrImage == null) {
             log("❌生成二维码失败")
@@ -642,6 +658,9 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         }
         java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(transferable, null)
         log("✅二维码图片已复制到剪贴板（$version）")
+        } catch (e: Throwable) {
+            log("❌复制二维码失败: ${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
     private fun generateQrImage(text: String, size: Int): java.awt.image.BufferedImage? {

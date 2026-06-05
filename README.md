@@ -17,11 +17,19 @@
 - [ ] Click the <kbd>Watch</kbd> button on the top of the [IntelliJ Platform Plugin Template][template] to be notified about releases containing new features and fixes.
 
 <!-- Plugin description -->
-This Fancy IntelliJ Platform Plugin is going to be your implementation of the brilliant ideas that you have.
+Leopard Plugin is an Android development productivity toolkit for IntelliJ IDEA and Android Studio.
 
-This specific section is a source for the [plugin.xml](/src/main/resources/META-INF/plugin.xml) file which will be extracted by the [Gradle](/build.gradle.kts) during the build process.
+**Device Operations** — One-click toolbar actions for common ADB tasks: install/uninstall apps, clear data, kill/start processes, and attach debugger.
 
-To keep everything working, do not remove `<!-- ... -->` sections. 
+**Build Tools** — Trigger Gradle debug builds from the toolbar with sound notifications on completion.
+
+**Log Viewer** — Built-in log console with filtering and highlighting, supporting Logcat and crash log capture.
+
+**MockData** — Integrated mock data panel with environment switching, WebSocket-based device connection, and auto-connect on startup.
+
+**CI/CD Integration** — Browse build iterations, view packages, copy download links, and generate QR codes for easy installation.
+
+**AI Assistant Shortcuts** — Quick-launch Claude Code and Cursor Agent directly from the toolbar.
 <!-- Plugin description end -->
 
 ## Installation
