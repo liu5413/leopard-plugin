@@ -82,6 +82,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
     private var allSprints = listOf<SprintItem>()
     private val moduleCheckboxes = mutableListOf<Pair<JCheckBox, ModuleItem>>()
     private var suppressSave = false
+    private var sprintLinkField: JTextField
 
     @Volatile
     private var resolvedCliPath: String? = null
@@ -114,6 +115,26 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         sprintPanel.add(JLabel("迭代:"))
         sprintPanel.add(sprintCombo)
         topPanel.add(sprintPanel)
+
+        val sprintLinkPanel = JPanel(BorderLayout()).apply {
+            alignmentX = LEFT_ALIGNMENT
+            maximumSize = Dimension(Int.MAX_VALUE, 24)
+        }
+        sprintLinkField = JTextField("").apply {
+            isEditable = false
+            border = BorderFactory.createEmptyBorder(0, 48, 0, 0)
+            isOpaque = false
+            foreground = java.awt.Color(0x3574F0)
+            font = Font("Dialog", Font.PLAIN, 11)
+            cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+            addMouseListener(object : java.awt.event.MouseAdapter() {
+                override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                    if (text.isNotEmpty()) com.intellij.ide.BrowserUtil.browse(text)
+                }
+            })
+        }
+        sprintLinkPanel.add(sprintLinkField, BorderLayout.CENTER)
+        topPanel.add(sprintLinkPanel)
 
         val buildTypePanel = JPanel(FlowLayout(FlowLayout.LEFT)).apply { alignmentX = LEFT_ALIGNMENT }
         buildTypePanel.add(JLabel("包类型:"))
@@ -158,6 +179,16 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                     border = BorderFactory.createLineBorder(java.awt.Color(220, 220, 220))
                 }
                 val menuFont = Font("Dialog", Font.PLAIN, 13)
+                val baselineFile = findBaselineGradleFile()
+                if (baselineFile != null) {
+                    val state = packageTableModel.getValueAt(row, 3) as? String ?: ""
+                    popup.add(JMenuItem("  🔄 更新当前基线").apply {
+                        font = menuFont
+                        border = BorderFactory.createEmptyBorder(6, 8, 6, 16)
+                        isEnabled = (state == "打包成功")
+                        addActionListener { updateBaseline(row, baselineFile) }
+                    })
+                }
                 popup.add(JMenuItem("  📋 复制下载链接").apply {
                     font = menuFont
                     border = BorderFactory.createEmptyBorder(6, 8, 6, 16)
@@ -225,6 +256,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         sprintCombo.addActionListener {
             if (suppressSave) return@addActionListener
             val sprint = sprintCombo.selectedItem as? SprintItem ?: return@addActionListener
+            sprintLinkField.text = sprint.projectUniqueId
             modulePanel.removeAll()
             moduleCheckboxes.clear()
             loadModules(sprint.projectUniqueId)
@@ -427,6 +459,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
 
                 val sprint = sprintCombo.selectedItem as? SprintItem
                 if (sprint != null) {
+                    sprintLinkField.text = sprint.projectUniqueId
                     loadModules(sprint.projectUniqueId)
                     loadPackages(sprint.projectUniqueId)
                 }
@@ -517,7 +550,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private val packageExtraInfo = mutableListOf<PackageExtra>()
 
-    data class PackageExtra(val downloadUrl: String, val fileNameCn: String, val instanceHeadline: String, val sizeDisplay: String)
+    data class PackageExtra(val downloadUrl: String, val fileNameCn: String, val instanceHeadline: String, val sizeDisplay: String, val createTime: String = "")
 
     private fun copyPackageUrl(row: Int) {
         if (row < 0 || row >= packageExtraInfo.size) return
@@ -538,6 +571,82 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
             log("✅已复制下载链接（$version）: \n$url")
         } else {
             log("该安装包暂无下载链接")
+        }
+    }
+
+    private fun findBaselineGradleFile(): java.io.File? {
+        val basePath = project.basePath ?: return null
+        val file = java.io.File(basePath, "bundle_runtime/build.gradle")
+        if (!file.exists()) return null
+        val content = file.readText()
+        val regex = Regex("""^\s*apkDownloadUrl\s*=\s*"https?://[^"]+"""", RegexOption.MULTILINE)
+        return if (regex.containsMatchIn(content)) file else null
+    }
+
+    private fun updateBaseline(row: Int, gradleFile: java.io.File) {
+        if (row < 0 || row >= packageExtraInfo.size) return
+        val newUrl = packageExtraInfo.getOrNull(row)?.downloadUrl ?: ""
+        if (newUrl.isEmpty()) {
+            log("该安装包暂无下载链接")
+            return
+        }
+        try {
+            val content = gradleFile.readText()
+            val regex = Regex("""(apkDownloadUrl\s*=\s*")https?://[^"]+"""")
+            val newContent = regex.replace(content) { "${it.groupValues[1]}$newUrl\"" }
+            if (newContent == content) {
+                log("⚠️未找到可替换的基线")
+                return
+            }
+            gradleFile.writeText(newContent)
+            val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByIoFile(gradleFile)
+            vf?.refresh(false, false)
+            val version = packageTableModel.getValueAt(row, 0) as? String ?: ""
+            log("✅已更新基线（$version）")
+            triggerGradleSync()
+        } catch (e: Exception) {
+            log("❌更新基线失败: ${e.message}")
+        }
+    }
+
+    private fun triggerGradleSync() {
+        try {
+            val connection = project.messageBus.connect()
+            connection.subscribe(
+                com.intellij.openapi.externalSystem.service.project.manage.ProjectDataImportListener.TOPIC,
+                object : com.intellij.openapi.externalSystem.service.project.manage.ProjectDataImportListener {
+                    override fun onImportFinished(projectPath: String?) {
+                        log("✅ Gradle 同步完成")
+                        connection.disconnect()
+                    }
+
+                    override fun onImportFailed(projectPath: String?, t: Throwable) {
+                        log("❌ Gradle 同步失败: ${t.message}")
+                        connection.disconnect()
+                    }
+                }
+            )
+            ApplicationManager.getApplication().invokeLater {
+                val actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance()
+                val dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
+                    .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
+                    .build()
+                val syncIds = listOf(
+                    "Android.SyncProject",
+                    "ExternalSystem.RefreshAllProjects"
+                )
+                for (id in syncIds) {
+                    val action = actionManager.getAction(id) ?: continue
+                    val event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(
+                        action, null, "", dataContext
+                    )
+                    action.actionPerformed(event)
+                    break
+                }
+            }
+            log("🔄正在同步 Gradle...")
+        } catch (e: Exception) {
+            log("⚠️Gradle sync 触发失败: ${e.message}")
         }
     }
 
@@ -566,27 +675,25 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
             else -> ""
         }
         try {
-            val iconStream = HuobanPanel::class.java.getResourceAsStream(iconPath)
-            if (iconStream != null) {
-                val icon = javax.imageio.ImageIO.read(iconStream)
-                iconStream.close()
-                if (icon != null) {
-                    val iconSize = qrImage.width / 5
-                    val scaledIcon = java.awt.image.BufferedImage(iconSize, iconSize, java.awt.image.BufferedImage.TYPE_INT_ARGB)
-                    val sg = scaledIcon.createGraphics()
-                    sg.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-                    sg.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
-                    sg.drawImage(icon, 0, 0, iconSize, iconSize, null)
-                    sg.dispose()
-
-                    val qrG = qrImage.createGraphics()
-                    val x = (qrImage.width - iconSize) / 2
-                    val y = (qrImage.height - iconSize) / 2
-                    val bgPad = 4
-                    qrG.color = java.awt.Color.WHITE
-                    qrG.fillRoundRect(x - bgPad, y - bgPad, iconSize + bgPad * 2, iconSize + bgPad * 2, 8, 8)
-                    qrG.drawImage(scaledIcon, x, y, null)
-                    qrG.dispose()
+            if (iconPath.isNotEmpty()) {
+                val iconSize = qrImage.width / 5
+                val svgStream = HuobanPanel::class.java.getResourceAsStream(iconPath)
+                if (svgStream != null) {
+                    val svgBytes = svgStream.readBytes()
+                    svgStream.close()
+                    val rawImg = com.intellij.util.SVGLoader.load(
+                        java.io.ByteArrayInputStream(svgBytes), iconSize.toFloat() / 80f
+                    )
+                    if (rawImg != null) {
+                        val qrG = qrImage.createGraphics()
+                        val x = (qrImage.width - iconSize) / 2
+                        val y = (qrImage.height - iconSize) / 2
+                        val bgPad = 4
+                        qrG.color = java.awt.Color.WHITE
+                        qrG.fillRoundRect(x - bgPad, y - bgPad, iconSize + bgPad * 2, iconSize + bgPad * 2, 8, 8)
+                        qrG.drawImage(rawImg, x, y, iconSize, iconSize, null)
+                        qrG.dispose()
+                    }
                 }
             }
         } catch (_: Exception) {
@@ -596,6 +703,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         val extra = packageExtraInfo.getOrNull(row)
         val fileNameCn = extra?.fileNameCn ?: ""
         val sizeDisplay = extra?.sizeDisplay ?: ""
+        val createTime = extra?.createTime ?: ""
         val versionLine = if (sizeDisplay.isNotEmpty()) "$version (${sizeDisplay}M)" else version
 
         val padding = 24
@@ -605,6 +713,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
 
         val line1Font = Font("Dialog", Font.BOLD, 16)
         val line2Font = Font("Dialog", Font.PLAIN, 12)
+        val timeFont = Font("Dialog", Font.PLAIN, 11)
         val hintFont = Font("Dialog", Font.PLAIN, 12)
 
         val tempImg = java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB)
@@ -612,17 +721,21 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         tempG.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING, java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
         val line1H = tempG.getFontMetrics(line1Font).height
         val line2H = tempG.getFontMetrics(line2Font).height
+        val timeH = if (createTime.isNotEmpty()) tempG.getFontMetrics(timeFont).height else 0
         val hintH = tempG.getFontMetrics(hintFont).height
         tempG.dispose()
 
         val hintText = "扫码前请确保手机已连接内网"
-        val textBlockH = line1H + lineGap + line2H
+        val timeGap = if (createTime.isNotEmpty()) lineGap else 0
+        val textBlockH = line1H + lineGap + line2H + timeGap + timeH
         val imgW = qrImage.width + padding * 2
         val imgH = padding + textBlockH + qrTopGap + qrImage.height + qrBottomGap + hintH + padding
 
-        val compositeImage = java.awt.image.BufferedImage(imgW, imgH, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        val compositeImage = java.awt.image.BufferedImage(imgW, imgH, java.awt.image.BufferedImage.TYPE_INT_RGB)
         val g = compositeImage.createGraphics()
-        g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING, java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+        g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING, java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB)
+        g.setRenderingHint(java.awt.RenderingHints.KEY_FRACTIONALMETRICS, java.awt.RenderingHints.VALUE_FRACTIONALMETRICS_ON)
+        g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY)
         g.color = java.awt.Color.WHITE
         g.fillRect(0, 0, imgW, imgH)
 
@@ -638,7 +751,17 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         g.font = line2Font
         val l2W = g.fontMetrics.stringWidth(versionLine)
         g.drawString(versionLine, (imgW - l2W) / 2, curY + g.fontMetrics.ascent)
-        curY += line2H + qrTopGap
+        curY += line2H
+
+        if (createTime.isNotEmpty()) {
+            curY += lineGap
+            g.color = java.awt.Color(130, 130, 130)
+            g.font = timeFont
+            val timeW = g.fontMetrics.stringWidth(createTime)
+            g.drawString(createTime, (imgW - timeW) / 2, curY + g.fontMetrics.ascent)
+            curY += timeH
+        }
+        curY += qrTopGap
 
         g.drawImage(qrImage, padding, curY, null)
         curY += qrImage.height + qrBottomGap
@@ -650,14 +773,33 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
 
         g.dispose()
 
-        // 复制图片到剪贴板
-        val transferable = object : java.awt.datatransfer.Transferable {
-            override fun getTransferDataFlavors() = arrayOf(java.awt.datatransfer.DataFlavor.imageFlavor)
-            override fun isDataFlavorSupported(flavor: java.awt.datatransfer.DataFlavor?) = flavor == java.awt.datatransfer.DataFlavor.imageFlavor
-            override fun getTransferData(flavor: java.awt.datatransfer.DataFlavor?): Any = compositeImage
+        // 气泡弹出展示二维码
+        val popupPanel = JPanel(BorderLayout())
+        popupPanel.add(JLabel(ImageIcon(compositeImage)), BorderLayout.CENTER)
+        val copyBtn = JButton("复制").apply {
+            addActionListener {
+                val transferable = object : java.awt.datatransfer.Transferable {
+                    override fun getTransferDataFlavors() = arrayOf(java.awt.datatransfer.DataFlavor.imageFlavor)
+                    override fun isDataFlavorSupported(flavor: java.awt.datatransfer.DataFlavor?) = flavor == java.awt.datatransfer.DataFlavor.imageFlavor
+                    override fun getTransferData(flavor: java.awt.datatransfer.DataFlavor?): Any = compositeImage
+                }
+                java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(transferable, null)
+                log("✅二维码图片已复制到剪贴板（$version）")
+            }
         }
-        java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(transferable, null)
-        log("✅二维码图片已复制到剪贴板（$version）")
+        val btnPanel = JPanel(FlowLayout(FlowLayout.CENTER))
+        btnPanel.add(copyBtn)
+        popupPanel.add(btnPanel, BorderLayout.SOUTH)
+
+        val popup = com.intellij.openapi.ui.popup.JBPopupFactory.getInstance()
+            .createComponentPopupBuilder(popupPanel, null)
+            .setTitle("二维码")
+            .setFocusable(true)
+            .setRequestFocus(true)
+            .setMovable(true)
+            .setCancelOnClickOutside(true)
+            .createPopup()
+        popup.showInCenterOf(this)
         } catch (e: Throwable) {
             log("❌复制二维码失败: ${e.javaClass.simpleName}: ${e.message}")
         }
@@ -748,7 +890,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                             val fileNameCn = obj.get("fileNameCn")?.asString ?: ""
                             val instanceHeadline = obj.get("instanceHeadline")?.asString ?: ""
                             packageTableModel.addRow(arrayOf(version, size, type, stateCn, time, userName))
-                            packageExtraInfo.add(PackageExtra(downloadUrl, fileNameCn, instanceHeadline, size))
+                            packageExtraInfo.add(PackageExtra(downloadUrl, fileNameCn, instanceHeadline, size, time))
                         }
                     }
                 }
