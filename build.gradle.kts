@@ -22,7 +22,7 @@ dependencies {
     implementation("io.netty:netty-all:4.1.100.Final")
 
     // Java WebSocket client
-    implementation("org.java-websocket:Java-WebSocket:1.5.3")
+    implementation("org.java-websocket:Java-WebSocket:1.6.0")
 
     // Gson for JSON parsing
     implementation("com.google.code.gson:gson:2.10.1")
