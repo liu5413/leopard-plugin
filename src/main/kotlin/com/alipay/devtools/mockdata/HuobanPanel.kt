@@ -1067,7 +1067,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     data class SprintItem(val name: String, val projectUniqueId: String, val version: String, val status: String, val platform: String) {
-        val displayName get() = "$name [$status]"
+        val displayName get() = name
     }
 
     data class ModuleItem(val moduleId: Long, val artifactId: String, val groupId: String, val displayName: String)
