@@ -5,6 +5,7 @@ import com.google.gson.JsonParser
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -129,7 +130,11 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
             cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
             addMouseListener(object : java.awt.event.MouseAdapter() {
                 override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                    if (text.isNotEmpty()) com.intellij.ide.BrowserUtil.browse(text)
+                    if (text.isNotEmpty()) {
+                        com.intellij.ide.BrowserUtil.browse(
+                            "https://huoban.alipay.com/subsite/sprint?active=build&devStage=package&projectUniqueId=$text"
+                        )
+                    }
                 }
             })
         }
@@ -684,16 +689,14 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                     val rawImg = com.intellij.util.SVGLoader.load(
                         java.io.ByteArrayInputStream(svgBytes), iconSize.toFloat() / 80f
                     )
-                    if (rawImg != null) {
-                        val qrG = qrImage.createGraphics()
-                        val x = (qrImage.width - iconSize) / 2
-                        val y = (qrImage.height - iconSize) / 2
-                        val bgPad = 4
-                        qrG.color = java.awt.Color.WHITE
-                        qrG.fillRoundRect(x - bgPad, y - bgPad, iconSize + bgPad * 2, iconSize + bgPad * 2, 8, 8)
-                        qrG.drawImage(rawImg, x, y, iconSize, iconSize, null)
-                        qrG.dispose()
-                    }
+                    val qrG = qrImage.createGraphics()
+                    val x = (qrImage.width - iconSize) / 2
+                    val y = (qrImage.height - iconSize) / 2
+                    val bgPad = 4
+                    qrG.color = JBColor.WHITE
+                    qrG.fillRoundRect(x - bgPad, y - bgPad, iconSize + bgPad * 2, iconSize + bgPad * 2, 8, 8)
+                    qrG.drawImage(rawImg, x, y, iconSize, iconSize, null)
+                    qrG.dispose()
                 }
             }
         } catch (_: Exception) {
