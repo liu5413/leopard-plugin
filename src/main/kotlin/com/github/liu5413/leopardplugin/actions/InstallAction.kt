@@ -14,12 +14,9 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.IconLoader
 import com.github.liu5413.leopardplugin.utils.AdbHelper
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 
 class InstallAction : AnAction(
     "Install App",
@@ -35,17 +32,17 @@ class InstallAction : AnAction(
 
         val apkFile = File(project.basePath, APK_PATH)
         if (!apkFile.exists()) {
-            showNoBuild(project, "APK file not found: ${apkFile.absolutePath}")
+            AdbHelper.showNoBuild(project, "Install", "APK file not found: ${apkFile.absolutePath}")
             return
         }
         BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val devices = getConnectedDevices(project)
+            val devices = AdbHelper.getConnectedDevices(project)
             ApplicationManager.getApplication().invokeLater {
                 when {
-                    devices.isEmpty() -> showNoBuild(project, "No connected devices found")
+                    devices.isEmpty() -> AdbHelper.showNoBuild(project, "Install", "No connected devices found")
                     devices.size == 1 -> runInstall(project, devices[0], apkFile)
-                    else -> showDeviceChooser(project, devices, apkFile)
+                    else -> AdbHelper.showDeviceChooser(project, devices) { device -> runInstall(project, device, apkFile) }
                 }
             }
         }
@@ -55,71 +52,7 @@ class InstallAction : AnAction(
         e.presentation.isEnabledAndVisible = e.project != null
     }
 
-    private fun getConnectedDevices(project: Project): List<DeviceInfo> {
-        val adb = AdbHelper.resolveAdbPath(project)
-        return try {
-            val process = ProcessBuilder(adb, "devices", "-l")
-                .redirectErrorStream(true)
-                .start()
-            val output = process.inputStream.bufferedReader().readText()
-            process.waitFor()
-            showBuildOutput(project, "Install", "$ $adb devices -l\n$output")
-            output.lines()
-                .filter { it.isNotBlank() && !it.startsWith("List of") && !it.startsWith("*") && it.matches(Regex("^\\S+\\s+device\\b.*")) }
-                .mapNotNull { line ->
-                    val serial = line.split("\\s+".toRegex()).firstOrNull() ?: return@mapNotNull null
-                    val model = Regex("model:(\\S+)").find(line)?.groupValues?.get(1) ?: serial
-                    DeviceInfo(serial, model)
-                }
-        } catch (e: Exception) {
-            showNoBuild(project, "Exception: ${e.message}")
-            emptyList()
-        }
-    }
-
-    private fun showDeviceChooser(project: Project, devices: List<DeviceInfo>, apkFile: File) {
-        JBPopupFactory.getInstance()
-            .createPopupChooserBuilder(devices)
-            .setTitle("Select Device")
-            .setRenderer { _, value, _, _, _ ->
-                javax.swing.JLabel("${value.model}  (${value.serial})")
-            }
-            .setItemChosenCallback { device -> runInstall(project, device, apkFile) }
-            .createPopup()
-            .showCenteredInCurrentWindow(project)
-    }
-
-    private fun showBuildOutput(project: Project, title: String, message: String) {
-        val buildId = Object()
-        val buildDescriptor = DefaultBuildDescriptor(
-            buildId, title, project.basePath ?: "", System.currentTimeMillis()
-        )
-        val buildViewManager = project.getService(BuildViewManager::class.java)
-        buildViewManager.onEvent(buildId, StartBuildEventImpl(buildDescriptor, title))
-        BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
-        buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$message\n", true))
-        buildViewManager.onEvent(
-            buildId,
-            FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title done", SuccessResultImpl())
-        )
-    }
-
-    private fun showNoBuild(project: Project, message: String) {
-        val buildId = Object()
-        val buildDescriptor = DefaultBuildDescriptor(
-            buildId, "Install", project.basePath ?: "", System.currentTimeMillis()
-        )
-        val buildViewManager = project.getService(BuildViewManager::class.java)
-        buildViewManager.onEvent(buildId, StartBuildEventImpl(buildDescriptor, "Install"))
-        BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
-        buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$message\n", true))
-        buildViewManager.onEvent(
-            buildId,
-            FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), message, FailureResultImpl())
-        )
-    }
-
-    private fun runInstall(project: Project, device: DeviceInfo, apkFile: File) {
+    private fun runInstall(project: Project, device: AdbHelper.DeviceInfo, apkFile: File) {
         val basePath = project.basePath ?: return
         val buildId = Object()
         val title = "Install"
@@ -138,38 +71,30 @@ class InstallAction : AnAction(
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val adb = AdbHelper.resolveAdbPath(project)
-                val cmd = "$adb -s ${device.serial} install -r \"${apkFile.absolutePath}\""
-                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ $cmd\n", true))
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ adb -s ${device.serial} install -r \"${apkFile.absolutePath}\"\n", true))
                 buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "APK: ${apkFile.name}\n", true))
-                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n\n", true))
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n", true))
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Channel: ${AdbHelper.lastDeviceChannel} — ${AdbHelper.lastDiagnostic}\n\n", true))
                 buildViewManager.onEvent(
                     buildId,
                     MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Installing ${apkFile.name} to ${device.model}...", null)
                 )
 
-                val process = ProcessBuilder(adb, "-s", device.serial, "install", "-r", apkFile.absolutePath)
-                    .directory(File(basePath))
-                    .redirectErrorStream(true)
-                    .start()
-
-                BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, line + "\n", true))
-                    }
+                val result = AdbHelper.installApk(project, device.serial, apkFile.absolutePath)
+                if (result.output.isNotBlank()) {
+                    buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, result.output, true))
                 }
+                val channel = if (result.usedDdmlib) "[ddmlib]" else "[cli]"
 
-                val exitCode = process.waitFor()
-                if (exitCode == 0) {
+                if (result.exitCode == 0) {
                     buildViewManager.onEvent(
                         buildId,
-                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title finished successfully", SuccessResultImpl())
+                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title finished successfully $channel", SuccessResultImpl())
                     )
                 } else {
                     buildViewManager.onEvent(
                         buildId,
-                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title failed with exit code $exitCode", FailureResultImpl())
+                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title failed with exit code ${result.exitCode} $channel", FailureResultImpl())
                     )
                 }
             } catch (ex: Exception) {
@@ -180,6 +105,4 @@ class InstallAction : AnAction(
             }
         }
     }
-
-    private data class DeviceInfo(val serial: String, val model: String)
 }

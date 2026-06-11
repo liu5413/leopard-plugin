@@ -5,6 +5,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.IconLoader
+import com.github.liu5413.leopardplugin.utils.AdbHelper
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import java.awt.datatransfer.StringSelection
 import java.time.LocalDateTime
@@ -31,6 +32,7 @@ class LogAction : AnAction(
         CopyPasteManager.getInstance().setContents(StringSelection(filePath))
         val terminalManager = TerminalToolWindowManager.getInstance(project)
         val widget = terminalManager.createShellWidget(project.basePath, "Logcat", true, false)
-        widget.sendCommandToExecute("adb logcat > $fileName")
+        val adb = AdbHelper.resolveAdbPath(project)
+        widget.sendCommandToExecute("\"$adb\" logcat > $fileName")
     }
 }

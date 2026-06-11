@@ -14,13 +14,9 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.IconLoader
 import com.github.liu5413.leopardplugin.utils.AdbHelper
 import com.github.liu5413.leopardplugin.utils.AppConstants
-import java.io.BufferedReader
-import java.io.File
-import java.io.InputStreamReader
 
 class ClearDataAction : AnAction(
     "Clear Data",
@@ -32,12 +28,12 @@ class ClearDataAction : AnAction(
         val project = e.project ?: return
         BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val devices = getConnectedDevices(project)
+            val devices = AdbHelper.getConnectedDevices(project)
             ApplicationManager.getApplication().invokeLater {
                 when {
-                    devices.isEmpty() -> showNoBuild(project, "No connected devices found")
+                    devices.isEmpty() -> AdbHelper.showNoBuild(project, "Clear Data", "No connected devices found")
                     devices.size == 1 -> runClearData(project, devices[0])
-                    else -> showDeviceChooser(project, devices)
+                    else -> AdbHelper.showDeviceChooser(project, devices) { device -> runClearData(project, device) }
                 }
             }
         }
@@ -47,54 +43,7 @@ class ClearDataAction : AnAction(
         e.presentation.isEnabledAndVisible = e.project != null
     }
 
-    private fun getConnectedDevices(project: Project): List<DeviceInfo> {
-        return try {
-            val adb = AdbHelper.resolveAdbPath(project)
-            val process = ProcessBuilder(adb, "devices", "-l")
-                .redirectErrorStream(true)
-                .start()
-            val output = process.inputStream.bufferedReader().readText()
-            process.waitFor()
-            output.lines()
-                .filter { it.isNotBlank() && !it.startsWith("List of") && !it.startsWith("*") && it.matches(Regex("^\\S+\\s+device\\b.*")) }
-                .mapNotNull { line ->
-                    val serial = line.split("\\s+".toRegex()).firstOrNull() ?: return@mapNotNull null
-                    val model = Regex("model:(\\S+)").find(line)?.groupValues?.get(1) ?: serial
-                    DeviceInfo(serial, model)
-                }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun showDeviceChooser(project: Project, devices: List<DeviceInfo>) {
-        JBPopupFactory.getInstance()
-            .createPopupChooserBuilder(devices)
-            .setTitle("Select Device")
-            .setRenderer { _, value, _, _, _ ->
-                javax.swing.JLabel("${value.model}  (${value.serial})")
-            }
-            .setItemChosenCallback { device -> runClearData(project, device) }
-            .createPopup()
-            .showCenteredInCurrentWindow(project)
-    }
-
-    private fun showNoBuild(project: Project, message: String) {
-        val buildId = Object()
-        val buildDescriptor = DefaultBuildDescriptor(
-            buildId, "Clear Data", project.basePath ?: "", System.currentTimeMillis()
-        )
-        val buildViewManager = project.getService(BuildViewManager::class.java)
-        buildViewManager.onEvent(buildId, StartBuildEventImpl(buildDescriptor, "Clear Data"))
-        BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
-        buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$message\n", true))
-        buildViewManager.onEvent(
-            buildId,
-            FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), message, FailureResultImpl())
-        )
-    }
-
-    private fun runClearData(project: Project, device: DeviceInfo) {
+    private fun runClearData(project: Project, device: AdbHelper.DeviceInfo) {
         val basePath = project.basePath ?: return
         val buildId = Object()
         val title = "Clear Data"
@@ -113,38 +62,28 @@ class ClearDataAction : AnAction(
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val adb = AdbHelper.resolveAdbPath(project)
-                val cmd = "$adb -s ${device.serial} shell pm clear ${AppConstants.PACKAGE_NAME}"
-                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ $cmd\n", true))
-                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n\n", true))
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ adb -s ${device.serial} shell pm clear ${AppConstants.PACKAGE_NAME}\n", true))
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n", true))
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Channel: ${AdbHelper.lastDeviceChannel} — ${AdbHelper.lastDiagnostic}\n\n", true))
                 buildViewManager.onEvent(
                     buildId,
                     MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Clearing data for ${AppConstants.PACKAGE_NAME} on ${device.model}...", null)
                 )
 
-                val process = ProcessBuilder(adb, "-s", device.serial, "shell", "pm", "clear", AppConstants.PACKAGE_NAME)
-                    .directory(File(basePath))
-                    .redirectErrorStream(true)
-                    .start()
-
-                val outputBuilder = StringBuilder()
-                BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        outputBuilder.append(line).append('\n')
-                        buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, line + "\n", true))
-                    }
+                val result = AdbHelper.executeShellCommand(project, device.serial, "pm", "clear", AppConstants.PACKAGE_NAME)
+                if (result.output.isNotBlank()) {
+                    buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, result.output, true))
                 }
+                val channel = if (result.usedDdmlib) "[ddmlib]" else "[cli]"
 
-                val exitCode = process.waitFor()
-                val clearSucceeded = exitCode == 0 && outputBuilder.toString().contains("Success")
+                val clearSucceeded = result.exitCode == 0 && result.output.contains("Success")
                 if (clearSucceeded) {
                     buildViewManager.onEvent(
                         buildId,
-                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title finished successfully", SuccessResultImpl())
+                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title finished successfully $channel", SuccessResultImpl())
                     )
                 } else {
-                    runFallbackOpenSettings(project, device, adb, basePath, buildId, buildViewManager, title, exitCode)
+                    runFallbackOpenSettings(project, device, basePath, buildId, buildViewManager, title, result.exitCode)
                 }
             } catch (ex: Exception) {
                 buildViewManager.onEvent(
@@ -157,8 +96,7 @@ class ClearDataAction : AnAction(
 
     private fun runFallbackOpenSettings(
         project: Project,
-        device: DeviceInfo,
-        adb: String,
+        device: AdbHelper.DeviceInfo,
         basePath: String,
         buildId: Any,
         buildViewManager: BuildViewManager,
@@ -177,36 +115,25 @@ class ClearDataAction : AnAction(
                 )
             )
 
-            val fallbackCmd = "$adb -s ${device.serial} shell am start " +
-                "-a android.settings.APPLICATION_DETAILS_SETTINGS " +
+            val fallbackCmd = "am start -a android.settings.APPLICATION_DETAILS_SETTINGS " +
                 "-d package:${AppConstants.PACKAGE_NAME} " +
-                "--es \":settings:fragment_args_key\" storage"
-            buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "\n$ $fallbackCmd\n", true))
+                "--es :settings:fragment_args_key storage"
+            buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "\n$ adb -s ${device.serial} shell $fallbackCmd\n", true))
 
-            val fallbackProcess = ProcessBuilder(
-                adb, "-s", device.serial, "shell", "am", "start",
+            val result = AdbHelper.executeShellCommand(
+                project, device.serial,
+                "am", "start",
                 "-a", "android.settings.APPLICATION_DETAILS_SETTINGS",
                 "-d", "package:${AppConstants.PACKAGE_NAME}",
                 "--es", ":settings:fragment_args_key", "storage"
             )
-                .directory(File(basePath))
-                .redirectErrorStream(true)
-                .start()
-
-            val fallbackOutput = StringBuilder()
-            BufferedReader(InputStreamReader(fallbackProcess.inputStream)).use { reader ->
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    fallbackOutput.append(line).append('\n')
-                    buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, line + "\n", true))
-                }
+            if (result.output.isNotBlank()) {
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, result.output, true))
             }
 
-            val fallbackExitCode = fallbackProcess.waitFor()
-            val fallbackText = fallbackOutput.toString()
-            val fallbackSucceeded = fallbackExitCode == 0 &&
-                !fallbackText.contains("Error", ignoreCase = true) &&
-                !fallbackText.contains("Exception", ignoreCase = true)
+            val fallbackSucceeded = result.exitCode == 0 &&
+                !result.output.contains("Error", ignoreCase = true) &&
+                !result.output.contains("Exception", ignoreCase = true)
 
             if (fallbackSucceeded) {
                 buildViewManager.onEvent(
@@ -236,7 +163,7 @@ class ClearDataAction : AnAction(
                         buildId,
                         null,
                         System.currentTimeMillis(),
-                        "$title failed (pm clear exit=$clearExitCode, fallback exit=$fallbackExitCode)",
+                        "$title failed (pm clear exit=$clearExitCode, fallback exit=${result.exitCode})",
                         FailureResultImpl()
                     )
                 )
@@ -248,6 +175,4 @@ class ClearDataAction : AnAction(
             )
         }
     }
-
-    private data class DeviceInfo(val serial: String, val model: String)
 }

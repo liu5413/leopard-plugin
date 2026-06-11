@@ -29,13 +29,23 @@
 <!--            <add-to-group group-id="MainToolbarRight" anchor="first"/>-->
 <!--            <add-to-group group-id="NavBarToolBar" anchor="last"/>-->
 <!--        </action>-->
-        <action id="DebugBuildAction"
-                class="com.github.liu5413.leopardplugin.actions.DebugBuildAction"
-                text="Debug Build"
-                description="Run gradle buildDebug">
+        <group id="LeopardBuildMenu"
+               class="com.intellij.openapi.actionSystem.DefaultActionGroup"
+               text="构建"
+               description="构建相关操作"
+               icon="/icons/debugBuild.svg"
+               popup="true">
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
-        </action>
+            <action id="DebugBuildAction"
+                    class="com.github.liu5413.leopardplugin.actions.DebugBuildAction"
+                    text="Debug Build"
+                    description="Run gradle buildDebug"/>
+            <action id="BundleBuildAction"
+                    class="com.github.liu5413.leopardplugin.actions.BundleBuildAction"
+                    text="Bundle Build"
+                    description="Run gradle :bundle_runtime:assembleDebug"/>
+        </group>
         <action id="UninstallAction"
                 class="com.github.liu5413.leopardplugin.actions.UninstallAction"
                 text="Uninstall App"

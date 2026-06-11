@@ -14,13 +14,9 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.IconLoader
 import com.github.liu5413.leopardplugin.utils.AdbHelper
 import com.github.liu5413.leopardplugin.utils.AppConstants
-import java.io.BufferedReader
-import java.io.File
-import java.io.InputStreamReader
 
 class StartAppAction : AnAction(
     "Start App",
@@ -32,12 +28,12 @@ class StartAppAction : AnAction(
         val project = e.project ?: return
         BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val devices = getConnectedDevices(project)
+            val devices = AdbHelper.getConnectedDevices(project)
             ApplicationManager.getApplication().invokeLater {
                 when {
-                    devices.isEmpty() -> showNoBuild(project, "No connected devices found")
+                    devices.isEmpty() -> AdbHelper.showNoBuild(project, "Start App", "No connected devices found")
                     devices.size == 1 -> runStartApp(project, devices[0])
-                    else -> showDeviceChooser(project, devices)
+                    else -> AdbHelper.showDeviceChooser(project, devices) { device -> runStartApp(project, device) }
                 }
             }
         }
@@ -47,54 +43,7 @@ class StartAppAction : AnAction(
         e.presentation.isEnabledAndVisible = e.project != null
     }
 
-    private fun getConnectedDevices(project: Project): List<DeviceInfo> {
-        return try {
-            val adb = AdbHelper.resolveAdbPath(project)
-            val process = ProcessBuilder(adb, "devices", "-l")
-                .redirectErrorStream(true)
-                .start()
-            val output = process.inputStream.bufferedReader().readText()
-            process.waitFor()
-            output.lines()
-                .filter { it.isNotBlank() && !it.startsWith("List of") && !it.startsWith("*") && it.matches(Regex("^\\S+\\s+device\\b.*")) }
-                .mapNotNull { line ->
-                    val serial = line.split("\\s+".toRegex()).firstOrNull() ?: return@mapNotNull null
-                    val model = Regex("model:(\\S+)").find(line)?.groupValues?.get(1) ?: serial
-                    DeviceInfo(serial, model)
-                }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun showDeviceChooser(project: Project, devices: List<DeviceInfo>) {
-        JBPopupFactory.getInstance()
-            .createPopupChooserBuilder(devices)
-            .setTitle("Select Device")
-            .setRenderer { _, value, _, _, _ ->
-                javax.swing.JLabel("${value.model}  (${value.serial})")
-            }
-            .setItemChosenCallback { device -> runStartApp(project, device) }
-            .createPopup()
-            .showCenteredInCurrentWindow(project)
-    }
-
-    private fun showNoBuild(project: Project, message: String) {
-        val buildId = Object()
-        val buildDescriptor = DefaultBuildDescriptor(
-            buildId, "Start App", project.basePath ?: "", System.currentTimeMillis()
-        )
-        val buildViewManager = project.getService(BuildViewManager::class.java)
-        buildViewManager.onEvent(buildId, StartBuildEventImpl(buildDescriptor, "Start App"))
-        BuildContentManager.getInstance(project).getOrCreateToolWindow().show()
-        buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$message\n", true))
-        buildViewManager.onEvent(
-            buildId,
-            FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), message, FailureResultImpl())
-        )
-    }
-
-    private fun runStartApp(project: Project, device: DeviceInfo) {
+    private fun runStartApp(project: Project, device: AdbHelper.DeviceInfo) {
         val basePath = project.basePath ?: return
         val buildId = Object()
         val title = "Start App"
@@ -113,37 +62,29 @@ class StartAppAction : AnAction(
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val adb = AdbHelper.resolveAdbPath(project)
-                val cmd = "$adb -s ${device.serial} shell am start -n ${AppConstants.MAIN_ACTIVITY}"
-                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ $cmd\n", true))
-                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n\n", true))
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "$ adb -s ${device.serial} shell am start -n ${AppConstants.MAIN_ACTIVITY}\n", true))
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Device: ${device.model} (${device.serial})\n", true))
+                buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, "Channel: ${AdbHelper.lastDeviceChannel} — ${AdbHelper.lastDiagnostic}\n\n", true))
                 buildViewManager.onEvent(
                     buildId,
                     MessageEventImpl(buildId, MessageEvent.Kind.INFO, null, "Starting app ${AppConstants.PACKAGE_NAME} on ${device.model}...", null)
                 )
 
-                val process = ProcessBuilder(adb, "-s", device.serial, "shell", "am", "start", "-n", AppConstants.MAIN_ACTIVITY)
-                    .directory(File(basePath))
-                    .redirectErrorStream(true)
-                    .start()
-
-                BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, line + "\n", true))
-                    }
+                val result = AdbHelper.executeShellCommand(project, device.serial, "am", "start", "-n", AppConstants.MAIN_ACTIVITY)
+                if (result.output.isNotBlank()) {
+                    buildViewManager.onEvent(buildId, OutputBuildEventImpl(buildId, result.output, true))
                 }
+                val channel = if (result.usedDdmlib) "[ddmlib]" else "[cli]"
 
-                val exitCode = process.waitFor()
-                if (exitCode == 0) {
+                if (result.exitCode == 0) {
                     buildViewManager.onEvent(
                         buildId,
-                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title finished successfully", SuccessResultImpl())
+                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title finished successfully $channel", SuccessResultImpl())
                     )
                 } else {
                     buildViewManager.onEvent(
                         buildId,
-                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title failed with exit code $exitCode", FailureResultImpl())
+                        FinishBuildEventImpl(buildId, null, System.currentTimeMillis(), "$title failed with exit code ${result.exitCode} $channel", FailureResultImpl())
                     )
                 }
             } catch (ex: Exception) {
@@ -154,6 +95,4 @@ class StartAppAction : AnAction(
             }
         }
     }
-
-    private data class DeviceInfo(val serial: String, val model: String)
 }

@@ -4,6 +4,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.IconLoader
+import com.github.liu5413.leopardplugin.utils.AdbHelper
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 
 class CrashAction : AnAction(
@@ -23,6 +24,7 @@ class CrashAction : AnAction(
     private fun openCrashTerminal(project: Project) {
         val terminalManager = TerminalToolWindowManager.getInstance(project)
         val widget = terminalManager.createShellWidget(project.basePath, "Crash Log", true, false)
-        widget.sendCommandToExecute("adb logcat -c && adb logcat -b crash")
+        val adb = AdbHelper.resolveAdbPath(project)
+        widget.sendCommandToExecute("\"$adb\" logcat -c && \"$adb\" logcat -b crash")
     }
 }

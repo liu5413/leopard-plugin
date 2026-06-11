@@ -23,15 +23,18 @@ import java.io.File
 import javax.swing.BoxLayout
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JPanel
 import javax.swing.JTextField
 import javax.swing.ScrollPaneConstants
+import javax.swing.Timer
 
 class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private val settings = LogViewerSettings.getInstance(project)
 
     private val fileComboBox = ComboBox<String>()
+    private val autoFilterTimer = Timer(300) { doFilter() }.apply { isRepeats = true }
     private val delimiterRows = mutableListOf<KeywordRow>()
     private val containsRows = mutableListOf<KeywordRow>()
     private val delimitersRowsPanel = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
@@ -97,12 +100,24 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
         )
 
         // File selector
-        val filePanel = JPanel(FlowLayout(FlowLayout.LEFT)).apply {
-            add(JBLabel("Log File:"))
-            add(fileComboBox)
-            add(JButton("↻ Refresh").apply {
-                addActionListener { refreshFileList() }
-            })
+        val filePanel = JPanel(BorderLayout()).apply {
+            add(JPanel(FlowLayout(FlowLayout.LEFT)).apply {
+                add(JBLabel("Log File:"))
+                add(fileComboBox)
+                add(JButton("↻ Refresh").apply {
+                    addActionListener { refreshFileList() }
+                })
+                add(JCheckBox("实时").apply {
+                    addActionListener {
+                        if (isSelected) autoFilterTimer.start() else autoFilterTimer.stop()
+                    }
+                })
+            }, BorderLayout.CENTER)
+            add(JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
+                add(JButton("🗑 Clear All").apply {
+                    addActionListener { clearAllLogs() }
+                })
+            }, BorderLayout.EAST)
         }
 
         // Delimiters section (left column)
@@ -379,6 +394,16 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
             }
             consoleView.print("\n", ConsoleViewContentType.NORMAL_OUTPUT)
         }
+    }
+
+    private fun clearAllLogs() {
+        val baseDir = project.basePath ?: return
+        val logFiles = File(baseDir).listFiles()
+            ?.filter { it.name.startsWith("log") && it.isFile }
+            ?: return
+        logFiles.forEach { it.delete() }
+        refreshFileList()
+        consoleView.clear()
     }
 
     private fun loadSavedState() {
