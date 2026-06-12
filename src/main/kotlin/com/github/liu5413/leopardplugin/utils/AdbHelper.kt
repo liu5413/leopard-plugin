@@ -8,6 +8,7 @@ import com.intellij.build.events.impl.FailureResultImpl
 import com.intellij.build.events.impl.OutputBuildEventImpl
 import com.intellij.build.events.impl.StartBuildEventImpl
 import com.intellij.ide.util.PropertiesComponent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -126,14 +127,61 @@ object AdbHelper {
     // ──────────────────────────────────────────────
 
     private fun getDebugBridge(project: Project): Any? {
-        val clazz = Class.forName("org.jetbrains.android.sdk.AndroidSdkUtils")
-        val method = clazz.getMethod("getDebugBridge", Project::class.java)
-        var bridge: Any? = null
-        ApplicationManager.getApplication().invokeAndWait {
-            bridge = method.invoke(null, project)
-        }
+        val bridge = tryGetBridgeViaAdbService(project)
+            ?: tryGetBridgeViaAndroidSdkUtils(project)
         LOG.info("[ddmlib] getDebugBridge returned: ${bridge?.javaClass?.name ?: "null"}")
         return bridge
+    }
+
+    /** Primary: AdbService.getInstance().getDebugBridge(project).get() */
+    private fun tryGetBridgeViaAdbService(project: Project): Any? {
+        return try {
+            val serviceClass = Class.forName("com.android.tools.idea.adb.AdbService")
+            val service = serviceClass.getMethod("getInstance").invoke(null)
+            // Try getDebugBridge(Project) first (AS 2025.3+)
+            val future = try {
+                serviceClass.getMethod("getDebugBridge", Project::class.java).invoke(service, project)
+            } catch (_: NoSuchMethodException) {
+                // Fallback to getDebugBridge(File)
+                val adbFile = resolveAdbFile(project) ?: return null
+                serviceClass.getMethod("getDebugBridge", File::class.java).invoke(service, adbFile)
+            }
+            future?.javaClass?.getMethod("get", Long::class.java, TimeUnit::class.java)
+                ?.invoke(future, 5L, TimeUnit.SECONDS)
+        } catch (e: Throwable) {
+            LOG.info("[ddmlib] AdbService failed: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    /** Legacy fallback: AndroidSdkUtils.getDebugBridge(project) */
+    private fun tryGetBridgeViaAndroidSdkUtils(project: Project): Any? {
+        return try {
+            val clazz = Class.forName("org.jetbrains.android.sdk.AndroidSdkUtils")
+            val method = clazz.getMethod("getDebugBridge", Project::class.java)
+            var bridge: Any? = null
+            ApplicationManager.getApplication().invokeAndWait {
+                bridge = method.invoke(null, project)
+            }
+            bridge
+        } catch (e: Throwable) {
+            LOG.info("[ddmlib] AndroidSdkUtils failed: ${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    private fun resolveAdbFile(project: Project): File? {
+        // AdbFileProvider.fromProject(project)
+        try {
+            val providerClass = Class.forName("com.android.tools.idea.adb.AdbFileProvider")
+            val fromProject = providerClass.getMethod("fromProject", Project::class.java)
+            val provider = fromProject.invoke(null, project) ?: return null
+            val adb = providerClass.getMethod("get").invoke(provider) as? File
+            if (adb != null && adb.isFile && adb.canExecute()) return adb
+        } catch (_: Throwable) {}
+        val path = resolveAdbPath(project)
+        val file = File(path)
+        return if (file.isFile && file.canExecute()) file else null
     }
 
     private fun getDevicesViaDdmlib(project: Project): List<DeviceInfo>? {
@@ -300,22 +348,8 @@ object AdbHelper {
     }
 
     fun resolveAdbPath(project: Project): String {
-        // Try ddmlib first to get SDK path
-        try {
-            val bridge = getDebugBridge(project)
-            if (bridge != null) {
-                val clazz = Class.forName("org.jetbrains.android.sdk.AndroidSdkUtils")
-                val methods = clazz.methods
-                for (m in methods) {
-                    if (m.name == "getAdb" && m.parameterCount == 1) {
-                        val adbFile = m.invoke(null, project) as? File
-                        if (adbFile != null && adbFile.isFile && adbFile.canExecute()) {
-                            return adbFile.absolutePath
-                        }
-                    }
-                }
-            }
-        } catch (_: Throwable) {}
+        // Use AdbFileProvider (stable across AS versions)
+        resolveAdbFile(project)?.let { return it.absolutePath }
 
         for (sdkPath in candidateSdkPaths) {
             findAdbInSdkPath(sdkPath)?.let { return it }

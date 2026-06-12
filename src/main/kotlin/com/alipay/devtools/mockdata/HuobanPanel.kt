@@ -5,17 +5,13 @@ import com.google.gson.JsonParser
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
-import java.awt.BorderLayout
-import java.awt.Dimension
-import java.awt.FlowLayout
-import java.awt.Font
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.file.Files
 import java.nio.file.Path
 import com.intellij.ui.table.JBTable
+import java.awt.*
 import javax.swing.*
 import javax.swing.table.DefaultTableModel
 
@@ -184,9 +180,9 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                     border = BorderFactory.createLineBorder(java.awt.Color(220, 220, 220))
                 }
                 val menuFont = Font("Dialog", Font.PLAIN, 13)
+                val state = packageTableModel.getValueAt(row, 3) as? String ?: ""
                 val baselineFile = findBaselineGradleFile()
                 if (baselineFile != null) {
-                    val state = packageTableModel.getValueAt(row, 3) as? String ?: ""
                     popup.add(JMenuItem("  🔄 更新当前基线").apply {
                         font = menuFont
                         border = BorderFactory.createEmptyBorder(6, 8, 6, 16)
@@ -204,6 +200,13 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                     border = BorderFactory.createEmptyBorder(6, 8, 6, 16)
                     addActionListener { showQrCode(row) }
                 })
+                if (state == "打包中") {
+                    popup.add(JMenuItem("  👀 监听打包状态").apply {
+                        font = menuFont
+                        border = BorderFactory.createEmptyBorder(6, 8, 6, 16)
+                        addActionListener { watchBuildStatus(row) }
+                    })
+                }
                 popup.show(e.component, e.x, e.y)
             }
         })
@@ -693,7 +696,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                     val x = (qrImage.width - iconSize) / 2
                     val y = (qrImage.height - iconSize) / 2
                     val bgPad = 4
-                    qrG.color = JBColor.WHITE
+                    qrG.color = Color.WHITE
                     qrG.fillRoundRect(x - bgPad, y - bgPad, iconSize + bgPad * 2, iconSize + bgPad * 2, 8, 8)
                     qrG.drawImage(rawImg, x, y, iconSize, iconSize, null)
                     qrG.dispose()
@@ -974,16 +977,27 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun pollBuildStatus(requestId: String, projectUniqueId: String) {
-        log("开始轮询构建状态（每 60 秒一次，最多 15 次）...")
-        for (i in 1..15) {
+        log("开始轮询构建状态（等待8分钟后查询第一次，最多 8 次）...")
+        for (i in 1..8) {
             log("")
-            Thread.sleep(60_000)
+            val delay = when (i) {
+                1 -> {
+                    60_000 * 8L
+                }
+                in 2..5 -> {
+                    60_000L
+                }
+                else -> {
+                    30_000L
+                }
+            }
+            Thread.sleep(delay)
 
-            log("[轮询 $i/15] 查询构建状态...")
+            log("[轮询 $i/8] 查询构建状态...")
             val output = runCli("package", "group", "--request-id=$requestId")
 
             val status = parseBuildStatus(output)
-            log("[轮询 $i/15] 状态: $status")
+            log("[轮询 $i/8] 状态: $status")
             when (status) {
                 "SUCCESS" -> {
                     log("")
@@ -1008,10 +1022,139 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
 
         log("")
         log("========================================")
-        log("⚠️轮询超时（已查询 15 次），请手动查询:https://huoban.alipay.com/subsite/sprint?active=build&devStage=package&projectUniqueId=$projectUniqueId")
+        log("⚠️轮询超时（已查询 15 分钟），请手动查询:https://huoban.alipay.com/subsite/sprint?active=build&devStage=package&projectUniqueId=$projectUniqueId")
         log("========================================")
         speak("打包超时", "Meijia")
         loadPackages(projectUniqueId)
+    }
+
+    private fun watchBuildStatus(row: Int) {
+        if (row < 0 || row >= packageExtraInfo.size) return
+        val extra = packageExtraInfo[row]
+        val createTime = extra.createTime
+        if (createTime.isEmpty()) {
+            log("⚠️无法获取构建时间，无法监听")
+            return
+        }
+        val sprint = sprintCombo.selectedItem as? SprintItem ?: return
+        val projectUniqueId = sprint.projectUniqueId
+
+        log("👀 开始监听打包状态（创建时间: $createTime）")
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                val createTimeMs = sdf.parse(createTime)?.time ?: run {
+                    log("⚠️解析创建时间失败: $createTime")
+                    return@executeOnPooledThread
+                }
+
+                val firstQueryAt = createTimeMs + 8 * 60 * 1000L
+                val deadlineAt = createTimeMs + 15 * 60 * 1000L
+
+                val waitForFirst = firstQueryAt - System.currentTimeMillis()
+                if (waitForFirst > 0) {
+                    log("⏳ 等待至第 8 分钟再查询（约 ${waitForFirst / 1000}s 后）...")
+                    Thread.sleep(waitForFirst)
+                }
+
+                var queryCount = 0
+                while (System.currentTimeMillis() < deadlineAt) {
+                    queryCount++
+                    val elapsed = (System.currentTimeMillis() - createTimeMs) / 1000
+                    log("[监听 #$queryCount] 查询打包状态（已过 ${elapsed}s）...")
+
+                    loadPackagesSync(projectUniqueId)
+
+                    val currentRow = findPackageRowByCreateTime(createTime)
+                    if (currentRow < 0) {
+                        log("⚠️未找到对应条目，停止监听")
+                        return@executeOnPooledThread
+                    }
+                    val state = packageTableModel.getValueAt(currentRow, 3) as? String ?: ""
+                    log("[监听 #$queryCount] 状态: $state")
+
+                    when (state) {
+                        "打包成功" -> {
+                            log("✅ 打包成功!")
+                            speak("打包成功", "Tingting")
+                            return@executeOnPooledThread
+                        }
+                        "打包失败" -> {
+                            log("❌ 打包失败!")
+                            speak("打包失败", "Meijia")
+                            return@executeOnPooledThread
+                        }
+                    }
+
+                    val remaining = deadlineAt - System.currentTimeMillis()
+                    if (remaining <= 0) break
+                    val sleepMs = minOf(60_000L, remaining)
+                    Thread.sleep(sleepMs)
+                }
+
+                log("⚠️监听超时（已超过 15 分钟），停止监听")
+                speak("打包超时", "Meijia")
+            } catch (e: Exception) {
+                log("❌ 监听异常: ${e.message}")
+            }
+        }
+    }
+
+    private fun findPackageRowByCreateTime(createTime: String): Int {
+        for (i in 0 until packageExtraInfo.size) {
+            if (packageExtraInfo[i].createTime == createTime) return i
+        }
+        return -1
+    }
+
+    private fun loadPackagesSync(projectUniqueId: String) {
+        try {
+            val platform = (sprintCombo.selectedItem as? SprintItem)?.platform?.ifEmpty { "Android" } ?: "Android"
+            val output = runCli("package", "list", "--product-name=LEOPARD", "--project-unique-id=$projectUniqueId", "--platform=$platform", "--page-size=50")
+            val json = JsonParser.parseString(output).asJsonObject
+            val resultElement = json.get("result")
+            val list = when {
+                resultElement == null -> null
+                resultElement.isJsonArray -> resultElement.asJsonArray
+                resultElement.isJsonObject -> resultElement.asJsonObject.getAsJsonArray("list")
+                else -> null
+            }
+            SwingUtilities.invokeAndWait {
+                packageTableModel.rowCount = 0
+                packageExtraInfo.clear()
+                if (list != null && list.size() > 0) {
+                    for (element in list) {
+                        val obj = element.asJsonObject
+                        val buildType = obj.get("buildType")?.asString ?: ""
+                        if (platform == "Android") {
+                            if (buildType != "debug") continue
+                        } else if (platform == "iOS") {
+                            if (buildType != "enterprise_debug") continue
+                        }
+                        val version = obj.get("version")?.asString ?: ""
+                        val size = obj.get("sizeDisplay")?.asString ?: "0"
+                        val type = obj.get("typeDisplay")?.asString ?: obj.get("type")?.asString ?: ""
+                        val stateRaw = obj.get("state")?.asString ?: ""
+                        val stateCn = when (stateRaw) {
+                            "packing" -> "打包中"
+                            "success" -> "打包成功"
+                            "fail" -> "打包失败"
+                            else -> stateRaw
+                        }
+                        val time = obj.get("createTimeString")?.asString ?: ""
+                        val userName = obj.get("userName")?.asString ?: ""
+                        val downloadUrl = obj.get("downloadUrl")?.asString ?: obj.get("url")?.asString ?: ""
+                        val fileNameCn = obj.get("fileNameCn")?.asString ?: ""
+                        val instanceHeadline = obj.get("instanceHeadline")?.asString ?: ""
+                        packageTableModel.addRow(arrayOf(version, size, type, stateCn, time, userName))
+                        packageExtraInfo.add(PackageExtra(downloadUrl, fileNameCn, instanceHeadline, size, time))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log("❌刷新安装包列表失败: ${e.message}")
+        }
     }
 
     private fun parseBuildStatus(output: String): String {

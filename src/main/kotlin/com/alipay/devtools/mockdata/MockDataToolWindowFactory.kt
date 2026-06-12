@@ -13,6 +13,8 @@ import java.awt.FlowLayout
 import java.awt.Image
 import java.io.ByteArrayInputStream
 import java.util.Base64
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import javax.swing.*
 
@@ -80,6 +82,15 @@ class MockDataPanel(private val project: Project) : JPanel(BorderLayout()) {
         val outer = JPanel(BorderLayout())
         val panel = JPanel()
         panel.layout = BoxLayout(panel, BoxLayout.Y_AXIS)
+
+        // 延迟查询用户信息的回调，在 userInfoPanel/renderUserInfo 定义后赋值
+        var refreshUserInfo: (() -> Unit)? = null
+        // 直接用已有 UserInfo 刷新 UI 的回调
+        var applyUserInfo: ((UserInfo) -> Unit)? = null
+        // 标记是否已通过推送或主动查询拿到用户信息（避免 poll 覆盖）
+        var hasReceivedUserInfo = false
+        // 自动登录进行中时,禁止 poll 覆盖 UI
+        var autoLoginInProgress = false
 
         // 自动连接区域
         val autoPanel = JPanel(FlowLayout(FlowLayout.LEFT)).apply {
@@ -157,10 +168,152 @@ class MockDataPanel(private val project: Project) : JPanel(BorderLayout()) {
             }
             service.sendBroadcast("LP_FORCE_LOGOUT", null).thenAccept { success: Boolean ->
                 log("${if (success) "✅" else "❌"} 踢登 ${if (success) "成功" else "失败"}")
+                if (success) refreshUserInfo?.invoke()
             }
         }
         forceLogoutPanel.add(forceLogoutBtn)
+
+        val logoutBtn = JButton("退登")
+        logoutBtn.toolTipText = "正常退出登录,1.1.80及版本以上"
+        logoutBtn.addActionListener {
+            if (!service.isConnected()) {
+                log("❌ 退登失败: 当前未连接设备")
+                return@addActionListener
+            }
+            service.sendBroadcast("LP_LOGOUT", null).thenAccept { success: Boolean ->
+                log("${if (success) "✅" else "❌"} 退登 ${if (success) "成功" else "失败"}")
+                if (success) refreshUserInfo?.invoke()
+            }
+        }
+        forceLogoutPanel.add(logoutBtn)
+
         panel.add(forceLogoutPanel)
+
+        // 自动登录区域
+        val autoLoginPanel = JPanel(FlowLayout(FlowLayout.LEFT)).apply {
+            alignmentX = JComponent.LEFT_ALIGNMENT
+        }
+        val props = com.intellij.ide.util.PropertiesComponent.getInstance(project)
+        val phoneHistoryKey = "mockdata.phone.history"
+        val phoneHistory = (props.getValue(phoneHistoryKey) ?: "")
+            .split(",").filter { it.matches(Regex("^1\\d{10}$")) }.toMutableList()
+        val phoneCombo = ComboBox(DefaultComboBoxModel(phoneHistory.toTypedArray())).apply {
+            isEditable = true
+            toolTipText = "输入11位手机号"
+            preferredSize = Dimension(160, preferredSize.height)
+        }
+        val autoLoginBtn = JButton("自动登录")
+        autoLoginBtn.toolTipText = "自动切换到预发环境并登录,1.1.80及版本以上"
+        autoLoginBtn.addActionListener {
+            if (!service.isConnected()) {
+                log("❌ 自动登录失败: 当前未连接设备")
+                return@addActionListener
+            }
+            val phone = (phoneCombo.editor.item as? String)?.trim() ?: ""
+            if (!phone.matches(Regex("^1\\d{10}$"))) {
+                log("❌ 请输入正确的11位手机号")
+                return@addActionListener
+            }
+            // 记录历史
+            if (phone !in phoneHistory) {
+                phoneHistory.add(0, phone)
+                (phoneCombo.model as DefaultComboBoxModel<String>).insertElementAt(phone, 0)
+                props.setValue(phoneHistoryKey, phoneHistory.take(10).joinToString(","))
+            }
+
+            autoLoginBtn.isEnabled = false
+            autoLoginBtn.text = "登录中..."
+            autoLoginInProgress = true
+
+            val currentEnv = service.getCurrentEnv()
+            val needSwitch = currentEnv != null && currentEnv != "pre"
+
+            fun doLogin() {
+                val data = JsonObject().apply { addProperty("phoneNumber", phone) }
+                service.sendBroadcast("LP_AUTO_LOGIN", data).thenAccept { success: Boolean ->
+                    SwingUtilities.invokeLater {
+                        if (success) {
+                            log("📲 自动登录指令已发送 ($phone), 等待设备处理...")
+                        } else {
+                            autoLoginBtn.isEnabled = true
+                            autoLoginBtn.text = "自动登录"
+                            autoLoginInProgress = false
+                            log("❌ 自动登录指令发送失败")
+                        }
+                    }
+                    if (success) {
+                        // 登录需要时间,延迟后查询确认结果并直接刷新UI
+                        CompletableFuture.delayedExecutor(15, TimeUnit.SECONDS).execute {
+                            if (!service.isConnected()) return@execute
+                            service.queryLoginStatus()
+                                .thenAccept { userInfo ->
+                                    SwingUtilities.invokeLater {
+                                        autoLoginBtn.isEnabled = true
+                                        autoLoginBtn.text = "自动登录"
+                                        applyUserInfo?.invoke(userInfo)
+                                        if (!userInfo.userId.isNullOrEmpty()) {
+                                            log("✅ 登录成功: ${userInfo.loginId ?: phone}")
+                                        } else {
+                                            log("⚠️ 登录指令已发送, 但未查询到登录态, 请检查设备")
+                                        }
+                                    }
+                                }
+                                .exceptionally { _ ->
+                                    SwingUtilities.invokeLater {
+                                        autoLoginBtn.isEnabled = true
+                                        autoLoginBtn.text = "自动登录"
+                                        autoLoginInProgress = false
+                                        log("⚠️ 登录指令已发送, 登录状态查询超时, 请在设备上确认")
+                                    }
+                                    null
+                                }
+                        }
+                    }
+                }
+            }
+
+            if (needSwitch) {
+                log("当前环境: $currentEnv, 正在切换到预发...")
+                service.switchEnv("pre").thenAccept { switched: Boolean ->
+                    if (switched) {
+                        log("✅ 环境已切换到预发, 等待重连后自动登录...")
+                        service.autoReconnectEnabled = true
+                        val done = java.util.concurrent.atomic.AtomicBoolean(false)
+                        val listener: (DeviceInfo) -> Unit = { _ ->
+                            if (done.compareAndSet(false, true)) {
+                                log("✅ 重连成功, 开始自动登录...")
+                                doLogin()
+                            }
+                        }
+                        service.addDeviceInfoListener(listener)
+                        // 超时兜底
+                        CompletableFuture.delayedExecutor(10, java.util.concurrent.TimeUnit.SECONDS).execute {
+                            service.removeDeviceInfoListener(listener)
+                            if (done.compareAndSet(false, true)) {
+                                SwingUtilities.invokeLater {
+                                    autoLoginBtn.isEnabled = true
+                                    autoLoginBtn.text = "自动登录"
+                                    autoLoginInProgress = false
+                                    log("❌ 切换环境后等待重连超时")
+                                }
+                            }
+                        }
+                    } else {
+                        SwingUtilities.invokeLater {
+                            autoLoginBtn.isEnabled = true
+                            autoLoginBtn.text = "自动登录"
+                            autoLoginInProgress = false
+                            log("❌ 切换预发环境失败, 自动登录中止")
+                        }
+                    }
+                }
+            } else {
+                doLogin()
+            }
+        }
+        autoLoginPanel.add(phoneCombo)
+        autoLoginPanel.add(autoLoginBtn)
+        panel.add(autoLoginPanel)
 
         // 状态显示
         val statusPanel = JPanel(FlowLayout(FlowLayout.LEFT, 1, 5)).apply {
@@ -237,6 +390,32 @@ class MockDataPanel(private val project: Project) : JPanel(BorderLayout()) {
             }
         }
 
+        // 延迟查询并刷新用户信息（退登/登录操作后调用）
+        fun refreshUserInfoAfterDelay(delaySec: Long = 2) {
+            CompletableFuture.delayedExecutor(delaySec, TimeUnit.SECONDS).execute {
+                if (!service.isConnected()) return@execute
+                if (autoLoginInProgress) return@execute
+                service.queryLoginStatus()
+                    .thenAccept { userInfo ->
+                        SwingUtilities.invokeLater {
+                            userInfoPanel.isVisible = true
+                            renderUserInfo(userInfo)
+                        }
+                    }
+                    .exceptionally { _ -> null }
+            }
+        }
+        refreshUserInfo = { refreshUserInfoAfterDelay() }
+        applyUserInfo = { userInfo ->
+            userInfoPanel.isVisible = true
+            renderUserInfo(userInfo)
+            hasReceivedUserInfo = true
+            // 延迟清除标记，给设备端最后一次空推送留缓冲窗口
+            CompletableFuture.delayedExecutor(3, TimeUnit.SECONDS).execute {
+                autoLoginInProgress = false
+            }
+        }
+
         // 添加设备信息监听器
         service.addDeviceInfoListener { deviceInfo ->
             SwingUtilities.invokeLater {
@@ -263,8 +442,14 @@ class MockDataPanel(private val project: Project) : JPanel(BorderLayout()) {
         // 用户信息监听器:设备端在 autoLogin / currentUserInfo 推送时更新
         service.addUserInfoListener { userInfo ->
             SwingUtilities.invokeLater {
+                if (autoLoginInProgress && userInfo.loginId.isNullOrEmpty()) {
+                    return@invokeLater
+                }
                 userInfoPanel.isVisible = true
                 renderUserInfo(userInfo)
+                if (!userInfo.loginId.isNullOrEmpty()) {
+                    hasReceivedUserInfo = true
+                }
             }
         }
 
@@ -291,24 +476,36 @@ class MockDataPanel(private val project: Project) : JPanel(BorderLayout()) {
         // 不能走 service.addConnectionListener: 它挂到当前 client 上,初始化时 client=null 挂不上,
         // 且 reconnect 会换 client 把监听弄丢。这里复用下面的 Timer(100ms)轮询。
         var wasConnected = false
+        var reconnectQueryScheduled = false
         fun pollUserInfoOnConnect() {
             val nowConnected = service.isConnected()
+            if (!nowConnected) {
+                hasReceivedUserInfo = false
+            }
             if (nowConnected && !wasConnected) {
-                service.queryLoginStatus()
-                    .thenAccept { userInfo ->
-                        SwingUtilities.invokeLater {
-                            userInfoPanel.isVisible = true
-                            renderUserInfo(userInfo)
-                        }
+                if (!reconnectQueryScheduled) {
+                    reconnectQueryScheduled = true
+                    CompletableFuture.delayedExecutor(3, TimeUnit.SECONDS).execute {
+                        reconnectQueryScheduled = false
+                        if (!service.isConnected()) return@execute
+                        if (hasReceivedUserInfo || autoLoginInProgress) return@execute
+                        service.queryLoginStatus()
+                            .thenAccept { userInfo ->
+                                SwingUtilities.invokeLater {
+                                    userInfoPanel.isVisible = true
+                                    renderUserInfo(userInfo)
+                                }
+                            }
+                            .exceptionally { err ->
+                                SwingUtilities.invokeLater {
+                                    userInfoPanel.isVisible = true
+                                    renderUserInfo(null)
+                                }
+                                log("查询登录状态失败: ${err.message}")
+                                null
+                            }
                     }
-                    .exceptionally { err ->
-                        SwingUtilities.invokeLater {
-                            userInfoPanel.isVisible = true
-                            renderUserInfo(null)
-                        }
-                        log("查询登录状态失败: ${err.message}")
-                        null
-                    }
+                }
             }
             wasConnected = nowConnected
         }
@@ -600,7 +797,7 @@ class MockDataPanel(private val project: Project) : JPanel(BorderLayout()) {
         // 发送广播
         val broadcastPanel = JPanel(FlowLayout(FlowLayout.LEFT))
         val broadcastActionField = JTextField("LP_AUTO_LOGIN", 25)
-        val broadcastDataField = JTextField("{\"mobileNo\":\"19976980995\",\"code\":888888}", 20)
+        val broadcastDataField = JTextField("{\"phoneNumber\":\"19976980995\",\"code\":888888}", 20)
         val broadcastBtn = JButton("发送广播")
         broadcastBtn.addActionListener {
             val action = broadcastActionField.text
@@ -682,6 +879,7 @@ class MockDataPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun broadcastActionCn(action: String): String = when (action) {
         "LP_AUTO_LOGIN" -> "自动登录"
         "LP_FORCE_LOGOUT" -> "踢登"
+        "LP_LOGOUT" -> "退登"
         else -> action
     }
 }

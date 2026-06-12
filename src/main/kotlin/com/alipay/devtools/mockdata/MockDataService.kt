@@ -36,6 +36,7 @@ class MockDataService(private val project: Project) : Disposable {
     // 监听 actionType=autoLaunch 的推送（环境切换 / 账号切换的最终结果）
     // 回调参数: success, reason
     private val autoLaunchListeners = mutableListOf<(Boolean, String?) -> Unit>()
+    private val rawMessageListeners = mutableListOf<(MockDataMessage) -> Unit>()
     private val autoConnect = MockDataAutoConnect(project)
     private var currentConnectionConfig: ConnectionConfig? = null
     private var currentMappedPort: Int? = null
@@ -248,6 +249,8 @@ class MockDataService(private val project: Project) : Disposable {
         try {
             logger.info("Received message: actionType=${message.actionType}, method=${message.method}, biz=${message.biz}")
 
+            rawMessageListeners.toList().forEach { it(message) }
+
             // 处理设备信息响应
             when {
                 message.method == "deviceInfo" -> {
@@ -364,9 +367,11 @@ class MockDataService(private val project: Project) : Disposable {
 
     /**
      * 查询登录状态
+     *
+     * 设备端 case 30 actionSubType=queryLoginStatus 的响应不带 requestKey，
+     * 不能用 sendAndWait。这里直接注册一次性消息监听，匹配 actionType=autoLogin + actionSubType=loginStatus。
      */
     fun queryLoginStatus(): CompletableFuture<UserInfo> {
-        val requestKey = "login_${System.currentTimeMillis()}"
         val future = CompletableFuture<UserInfo>()
 
         if (!isConnected()) {
@@ -376,36 +381,61 @@ class MockDataService(private val project: Project) : Disposable {
 
         logger.info("Querying login status, connected=${isConnected()}")
 
-        // 创建带 requestKey 的查询消息
-        val message = MockDataMessage(
-            actionType = "autoLogin",
-            actionSubType = "queryLoginStatus",
-            data = JsonObject().apply { addProperty("requestKey", requestKey) }
-        )
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
 
-        sendAndWait(message, 1000)
-            .thenAccept { response ->
+        // 一次性监听 autoLogin + loginStatus 响应
+        val listener: (MockDataMessage) -> Unit = { response ->
+            if (response.actionType == "autoLogin"
+                && response.actionSubType == "loginStatus"
+                && completed.compareAndSet(false, true)
+            ) {
                 logger.info("Received login status response: ${response.toJson()}")
-                // 从响应中提取用户信息
                 val dataObj = response.data?.asJsonObject
                 if (dataObj != null) {
-                    val env = dataObj.get("env")?.asString
-                    currentEnv = env
+                    // 设备端返回格式: { "logonId": "userId" } map
+                    var loginId: String? = null
+                    var userId: String? = null
+                    for (entry in dataObj.entrySet()) {
+                        loginId = entry.key
+                        userId = entry.value?.asString
+                    }
                     val userInfo = UserInfo(
-                        loginId = dataObj.get("loginId")?.asString,
-                        userId = dataObj.get("userId")?.asString,
-                        env = env,
-                        password = dataObj.get("password")?.asString
+                        loginId = loginId,
+                        userId = userId,
+                        env = currentEnv,
+                        password = null
                     )
                     future.complete(userInfo)
                 } else {
-                    future.completeExceptionally(IllegalStateException("No user data in response"))
+                    future.complete(UserInfo(loginId = null, userId = null, env = currentEnv, password = null))
                 }
             }
-            .exceptionally { error ->
-                future.completeExceptionally(error)
-                null
+        }
+        addRawMessageListener(listener)
+
+        // 超时兜底
+        CompletableFuture.delayedExecutor(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .execute {
+                removeRawMessageListener(listener)
+                if (completed.compareAndSet(false, true)) {
+                    future.completeExceptionally(
+                        java.util.concurrent.TimeoutException("Login status query timeout")
+                    )
+                }
             }
+
+        // 发送查询
+        val message = MockDataMessage(
+            actionType = "autoLogin",
+            actionSubType = "queryLoginStatus"
+        )
+        client?.send(message.toJson())?.exceptionally { error ->
+            removeRawMessageListener(listener)
+            if (completed.compareAndSet(false, true)) {
+                future.completeExceptionally(error)
+            }
+            null
+        }
 
         return future
     }
@@ -647,6 +677,14 @@ class MockDataService(private val project: Project) : Disposable {
 
     fun removeAutoLaunchListener(listener: (Boolean, String?) -> Unit) {
         autoLaunchListeners.remove(listener)
+    }
+
+    fun addRawMessageListener(listener: (MockDataMessage) -> Unit) {
+        rawMessageListeners.add(listener)
+    }
+
+    fun removeRawMessageListener(listener: (MockDataMessage) -> Unit) {
+        rawMessageListeners.remove(listener)
     }
 
     /**
