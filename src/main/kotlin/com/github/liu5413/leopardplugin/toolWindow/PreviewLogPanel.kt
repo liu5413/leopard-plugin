@@ -372,28 +372,32 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
         consoleContainer.revalidate()
         consoleContainer.repaint()
 
-        for ((index, line) in filtered) {
-            val msg = "行 ${index + 1}: $line"
-            val segments = LogFilter.segmentString(msg, delimiters)
-            val level = LogFilter.detectLevel(msg)
+        // Defer printing until the editor component is fully realized
+        val capturedConsole = consoleView
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+            for ((index, line) in filtered) {
+                val msg = "行 ${index + 1}: $line"
+                val segments = LogFilter.segmentString(msg, delimiters)
+                val level = LogFilter.detectLevel(msg)
 
-            for (segment in segments) {
-                if (segment.isDelimiter) {
-                    // Cycle background colors by delimiter index
-                    val ct = delimiterContentTypes[segment.delimiterIndex % delimiterContentTypes.size]
-                    consoleView.print(segment.text, ct)
-                } else {
-                    val ct = when (level) {
-                        LogLevel.INFO -> ConsoleViewContentType.NORMAL_OUTPUT
-                        LogLevel.VERBOSE -> blueContentType
-                        LogLevel.DEBUG -> debugContentType
-                        LogLevel.WARN -> warnContentType
-                        LogLevel.ERROR -> errorContentType
+                for (segment in segments) {
+                    if (segment.isDelimiter) {
+                        val ct = delimiterContentTypes[segment.delimiterIndex % delimiterContentTypes.size]
+                        capturedConsole.print(segment.text, ct)
+                    } else {
+                        val ct = when (level) {
+                            LogLevel.INFO -> ConsoleViewContentType.NORMAL_OUTPUT
+                            LogLevel.VERBOSE -> blueContentType
+                            LogLevel.DEBUG -> debugContentType
+                            LogLevel.WARN -> warnContentType
+                            LogLevel.ERROR -> errorContentType
+                        }
+                        capturedConsole.print(segment.text, ct)
                     }
-                    consoleView.print(segment.text, ct)
                 }
+                capturedConsole.print("\n", ConsoleViewContentType.NORMAL_OUTPUT)
             }
-            consoleView.print("\n", ConsoleViewContentType.NORMAL_OUTPUT)
+            capturedConsole.flushDeferredText()
         }
     }
 

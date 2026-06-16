@@ -179,9 +179,7 @@ object AdbHelper {
             val adb = providerClass.getMethod("get").invoke(provider) as? File
             if (adb != null && adb.isFile && adb.canExecute()) return adb
         } catch (_: Throwable) {}
-        val path = resolveAdbPath(project)
-        val file = File(path)
-        return if (file.isFile && file.canExecute()) file else null
+        return null
     }
 
     private fun getDevicesViaDdmlib(project: Project): List<DeviceInfo>? {
