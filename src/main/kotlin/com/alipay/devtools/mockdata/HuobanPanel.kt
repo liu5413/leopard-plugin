@@ -297,8 +297,9 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun log(msg: String) {
+        val ts = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
         SwingUtilities.invokeLater {
-            logArea.append("$msg\n")
+            logArea.append("[$ts] $msg\n")
             logArea.caretPosition = logArea.document.length
         }
     }
@@ -957,6 +958,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                 val pkgRequestId = extractPackageRequestId(pkgOutput)
                 if (pkgRequestId != null) {
                     log("构建请求 ID: $pkgRequestId")
+                    loadPackages(sprint.projectUniqueId)
                     // 轮询在独立线程中执行，不阻塞当前线程，多次打包互不干扰
                     val sprintId = sprint.projectUniqueId
                     ApplicationManager.getApplication().executeOnPooledThread {
@@ -978,7 +980,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private fun pollBuildStatus(requestId: String, projectUniqueId: String) {
         log("开始轮询构建状态（等待8分钟后查询第一次，最多 8 次）...")
-        for (i in 1..8) {
+        for (i in 1..11) {
             log("")
             val delay = when (i) {
                 1 -> {

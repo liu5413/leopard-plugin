@@ -11,6 +11,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.openapi.vfs.LocalFileSystem
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Dimension
@@ -210,7 +211,7 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun refreshFileList() {
         val baseDir = project.basePath ?: return
         val files = File(baseDir).listFiles()
-            ?.filter { it.name.startsWith("log") && it.isFile }
+            ?.filter { it.isFile && it.extension.lowercase() in listOf("txt", "log") }
             ?.sortedByDescending { it.lastModified() }
             ?.map { it.name }
             ?: emptyList()
@@ -399,9 +400,10 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
     private fun clearAllLogs() {
         val baseDir = project.basePath ?: return
         val logFiles = File(baseDir).listFiles()
-            ?.filter { it.name.startsWith("log") && it.isFile }
+            ?.filter { it.isFile && it.extension.lowercase() in listOf("txt", "log") }
             ?: return
         logFiles.forEach { it.delete() }
+        LocalFileSystem.getInstance().refresh(true)
         refreshFileList()
         consoleView.clear()
     }
