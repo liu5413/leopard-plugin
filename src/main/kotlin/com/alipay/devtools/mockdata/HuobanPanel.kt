@@ -979,8 +979,9 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
     }
 
     private fun pollBuildStatus(requestId: String, projectUniqueId: String) {
-        log("开始轮询构建状态（等待8分钟后查询第一次，最多 8 次）...")
-        for (i in 1..11) {
+        val pollMaxCount = 15
+        log("开始轮询构建状态（等待8分钟后查询第一次，最多 $pollMaxCount 次）...")
+        for (i in 1..pollMaxCount) {
             log("")
             val delay = when (i) {
                 1 -> {
@@ -995,11 +996,11 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
             }
             Thread.sleep(delay)
 
-            log("[轮询 $i/8] 查询构建状态...")
+            log("[轮询 $i/$pollMaxCount] 查询构建状态...")
             val output = runCli("package", "group", "--request-id=$requestId")
 
             val status = parseBuildStatus(output)
-            log("[轮询 $i/8] 状态: $status")
+            log("[轮询 $i/$pollMaxCount] 状态: $status")
             when (status) {
                 "SUCCESS" -> {
                     log("")
@@ -1024,7 +1025,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
 
         log("")
         log("========================================")
-        log("⚠️轮询超时（已查询 15 分钟），请手动查询:https://huoban.alipay.com/subsite/sprint?active=build&devStage=package&projectUniqueId=$projectUniqueId")
+        log("⚠️轮询超时（已查询 17 分钟），请手动查询:https://huoban.alipay.com/subsite/sprint?active=build&devStage=package&projectUniqueId=$projectUniqueId")
         log("========================================")
         speak("打包超时", "Meijia")
         loadPackages(projectUniqueId)
@@ -1052,7 +1053,7 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                 }
 
                 val firstQueryAt = createTimeMs + 8 * 60 * 1000L
-                val deadlineAt = createTimeMs + 15 * 60 * 1000L
+                val deadlineAt = createTimeMs + 17 * 60 * 1000L
 
                 val waitForFirst = firstQueryAt - System.currentTimeMillis()
                 if (waitForFirst > 0) {
@@ -1091,11 +1092,14 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
 
                     val remaining = deadlineAt - System.currentTimeMillis()
                     if (remaining <= 0) break
-                    val sleepMs = minOf(60_000L, remaining)
+                    val sleepMs = minOf(
+                        if (queryCount < 5) 60_000L else 30_000L,
+                        remaining
+                    )
                     Thread.sleep(sleepMs)
                 }
 
-                log("⚠️监听超时（已超过 15 分钟），停止监听")
+                log("⚠️监听超时（已超过 17 分钟），停止监听")
                 speak("打包超时", "Meijia")
             } catch (e: Exception) {
                 log("❌ 监听异常: ${e.message}")

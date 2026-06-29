@@ -96,13 +96,13 @@
             <add-to-group group-id="MainToolbarRight" anchor="first"/>
             <add-to-group group-id="NavBarToolBar" anchor="last"/>
         </action>
-        <action id="CursorAction"
-                class="com.github.liu5413.leopardplugin.actions.CursorAction"
-                text="Cursor Agent"
-                description="Open Cursor agent">
-            <add-to-group group-id="MainToolbarRight" anchor="first"/>
-            <add-to-group group-id="NavBarToolBar" anchor="last"/>
-        </action>
+<!--        <action id="CursorAction"-->
+<!--                class="com.github.liu5413.leopardplugin.actions.CursorAction"-->
+<!--                text="Cursor Agent"-->
+<!--                description="Open Cursor agent">-->
+<!--            <add-to-group group-id="MainToolbarRight" anchor="first"/>-->
+<!--            <add-to-group group-id="NavBarToolBar" anchor="last"/>-->
+<!--        </action>-->
         <!-- 日志类下拉:Crash / Logcat / Preview Log 三个之前各自占一格,合并成一个 popup group -->
         <group id="LeopardLogMenu"
                class="com.intellij.openapi.actionSystem.DefaultActionGroup"

@@ -35,13 +35,18 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
     private val settings = LogViewerSettings.getInstance(project)
 
     private val fileComboBox = ComboBox<String>()
-    private val autoFilterTimer = Timer(300) { doFilter() }.apply { isRepeats = true }
+    private val autoFilterTimer = Timer(300) { doIncrementalFilter() }.apply { isRepeats = true }
     private val delimiterRows = mutableListOf<KeywordRow>()
     private val containsRows = mutableListOf<KeywordRow>()
     private val delimitersRowsPanel = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
     private val containsRowsPanel = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
     private var consoleView: ConsoleViewImpl
     private val consoleContainer: JPanel
+
+    private var lastLineCount = 0
+    private var lastFileName: String? = null
+    private var lastDelimiters: List<String> = emptyList()
+    private var lastContains: List<String> = emptyList()
 
     /**
      * Custom ConsoleViewContentType for delimiter background colors.
@@ -349,22 +354,14 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
         val delimiters = delimiterRows.map { it.textField.text.trim() }.filter { it.isNotEmpty() }
         val contains = containsRows.map { it.textField.text.trim() }.filter { it.isNotEmpty() }
 
-        // Save state
         settings.saveDelimiters(delimiters)
         settings.saveContains(contains)
         settings.lastFileName = fileName
         (delimiters + contains).forEach { settings.addToHistory(it) }
 
-        // Read and filter
         val lines = file.readLines()
         val filtered = LogFilter.filterLines(lines, delimiters, contains)
 
-        // Print to console with user-specified color logic:
-        //   I/ or I  → white
-        //   D/ or D  → dark green
-        //   W/ or W  → yellow
-        //   E/ or E or Exception/Crash → red
-        //   default  → blue
         consoleView.dispose()
         consoleView = ConsoleViewImpl(project, true)
         consoleContainer.removeAll()
@@ -372,32 +369,76 @@ class PreviewLogPanel(private val project: Project) : JPanel(BorderLayout()) {
         consoleContainer.revalidate()
         consoleContainer.repaint()
 
-        // Defer printing until the editor component is fully realized
+        lastLineCount = lines.size
+        lastFileName = fileName
+        lastDelimiters = delimiters
+        lastContains = contains
+
         val capturedConsole = consoleView
         com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
-            for ((index, line) in filtered) {
-                val msg = "行 ${index + 1}: $line"
-                val segments = LogFilter.segmentString(msg, delimiters)
-                val level = LogFilter.detectLevel(msg)
-
-                for (segment in segments) {
-                    if (segment.isDelimiter) {
-                        val ct = delimiterContentTypes[segment.delimiterIndex % delimiterContentTypes.size]
-                        capturedConsole.print(segment.text, ct)
-                    } else {
-                        val ct = when (level) {
-                            LogLevel.INFO -> ConsoleViewContentType.NORMAL_OUTPUT
-                            LogLevel.VERBOSE -> blueContentType
-                            LogLevel.DEBUG -> debugContentType
-                            LogLevel.WARN -> warnContentType
-                            LogLevel.ERROR -> errorContentType
-                        }
-                        capturedConsole.print(segment.text, ct)
-                    }
-                }
-                capturedConsole.print("\n", ConsoleViewContentType.NORMAL_OUTPUT)
-            }
+            printLines(capturedConsole, filtered, delimiters)
             capturedConsole.flushDeferredText()
+        }
+    }
+
+    private fun doIncrementalFilter() {
+        val fileName = fileComboBox.selectedItem as? String ?: return
+        val baseDir = project.basePath ?: return
+        val file = File(baseDir, fileName)
+        if (!file.exists()) return
+
+        val delimiters = delimiterRows.map { it.textField.text.trim() }.filter { it.isNotEmpty() }
+        val contains = containsRows.map { it.textField.text.trim() }.filter { it.isNotEmpty() }
+
+        if (fileName != lastFileName || delimiters != lastDelimiters || contains != lastContains) {
+            doFilter()
+            return
+        }
+
+        val lines = file.readLines()
+        if (lines.size < lastLineCount) {
+            doFilter()
+            return
+        }
+        if (lines.size == lastLineCount) return
+
+        val newLines = lines.subList(lastLineCount, lines.size)
+        val offset = lastLineCount
+        val filtered = LogFilter.filterLines(newLines, delimiters, contains)
+            .map { IndexedValue(offset + it.index, it.value) }
+        lastLineCount = lines.size
+
+        if (filtered.isEmpty()) return
+
+        val capturedConsole = consoleView
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+            printLines(capturedConsole, filtered, delimiters)
+            capturedConsole.flushDeferredText()
+        }
+    }
+
+    private fun printLines(console: ConsoleViewImpl, filtered: List<IndexedValue<String>>, delimiters: List<String>) {
+        for ((index, line) in filtered) {
+            val msg = "行 ${index + 1}: $line"
+            val segments = LogFilter.segmentString(msg, delimiters)
+            val level = LogFilter.detectLevel(msg)
+
+            for (segment in segments) {
+                if (segment.isDelimiter) {
+                    val ct = delimiterContentTypes[segment.delimiterIndex % delimiterContentTypes.size]
+                    console.print(segment.text, ct)
+                } else {
+                    val ct = when (level) {
+                        LogLevel.INFO -> ConsoleViewContentType.NORMAL_OUTPUT
+                        LogLevel.VERBOSE -> blueContentType
+                        LogLevel.DEBUG -> debugContentType
+                        LogLevel.WARN -> warnContentType
+                        LogLevel.ERROR -> errorContentType
+                    }
+                    console.print(segment.text, ct)
+                }
+            }
+            console.print("\n", ConsoleViewContentType.NORMAL_OUTPUT)
         }
     }
 
