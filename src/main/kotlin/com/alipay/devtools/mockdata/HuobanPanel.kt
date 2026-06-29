@@ -76,6 +76,27 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         columnModel.getColumn(5).preferredWidth = 50   // 构建人
     }
 
+    private val downloadDir = Path.of("/Users/liu/Downloads/Apk")
+
+    private val downloadTableModel = object : DefaultTableModel(arrayOf("文件名", "大小", "状态"), 0) {
+        override fun isCellEditable(row: Int, column: Int) = false
+    }
+
+    private val downloadTable = JBTable(downloadTableModel).apply {
+        rowHeight = 28
+        tableHeader.reorderingAllowed = false
+        setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
+        showHorizontalLines = true
+        showVerticalLines = false
+        intercellSpacing = Dimension(0, 1)
+        autoResizeMode = JTable.AUTO_RESIZE_NEXT_COLUMN
+        columnModel.getColumn(0).preferredWidth = 200 // 文件名
+        columnModel.getColumn(1).preferredWidth = 100  // 大小
+        columnModel.getColumn(2).preferredWidth = 150  // 状态
+    }
+
+    private val downloadList = mutableListOf<DownloadItem>()
+
     private var allSprints = listOf<SprintItem>()
     private val moduleCheckboxes = mutableListOf<Pair<JCheckBox, ModuleItem>>()
     private var suppressSave = false
@@ -195,6 +216,12 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
                     border = BorderFactory.createEmptyBorder(6, 8, 6, 16)
                     addActionListener { copyPackageUrl(row) }
                 })
+                popup.add(JMenuItem("  ⬇️ 下载").apply {
+                    font = menuFont
+                    border = BorderFactory.createEmptyBorder(6, 8, 6, 16)
+                    isEnabled = (state == "打包成功")
+                    addActionListener { startDownloadApk(row) }
+                })
                 popup.add(JMenuItem("  📱 生成二维码").apply {
                     font = menuFont
                     border = BorderFactory.createEmptyBorder(6, 8, 6, 16)
@@ -227,15 +254,15 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         val tabbedPane = JTabbedPane()
         tabbedPane.addTab("构建", buildPanel)
         tabbedPane.addTab("安装包", packagePanel)
+        val downloadPanel = JPanel(BorderLayout())
+        downloadPanel.add(JBScrollPane(downloadTable), BorderLayout.CENTER)
+        tabbedPane.addTab("下载列表", downloadPanel)
 
-        // 切换到安装包 tab 时刷新列表
+        // 切换到下载列表 tab 时检查文件是否存在
         tabbedPane.addChangeListener {
-//            if (tabbedPane.selectedIndex == 1) {
-//                val sprint = sprintCombo.selectedItem as? SprintItem
-//                if (sprint != null) {
-//                    loadPackages(sprint.projectUniqueId)
-//                }
-//            }
+            if (tabbedPane.selectedIndex == 2) {
+                checkDownloadFilesExist()
+            }
         }
 
         val upperPanel = JPanel(BorderLayout())
@@ -560,6 +587,17 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
     private val packageExtraInfo = mutableListOf<PackageExtra>()
 
     data class PackageExtra(val downloadUrl: String, val fileNameCn: String, val instanceHeadline: String, val sizeDisplay: String, val createTime: String = "")
+
+    private enum class DownloadStatus { DOWNLOADING, COMPLETED, FAILED }
+
+    private data class DownloadItem(
+        val fileName: String,
+        val fileSize: String,
+        var status: DownloadStatus,
+        var progress: Int,
+        val downloadUrl: String,
+        val localPath: String
+    )
 
     private fun copyPackageUrl(row: Int) {
         if (row < 0 || row >= packageExtraInfo.size) return
@@ -1215,6 +1253,131 @@ class HuobanPanel(private val project: Project) : JPanel(BorderLayout()) {
         } catch (e: Exception) {
             val regex = Regex("InstallPackageJob_\\d+|PackageJob_\\d+")
             regex.find(output)?.value
+        }
+    }
+
+    private fun checkDownloadFilesExist() {
+        val removed = downloadList.filter { it.status != DownloadStatus.DOWNLOADING && !Files.exists(Path.of(it.localPath)) }
+        if (removed.isNotEmpty()) {
+            downloadList.removeAll(removed)
+            refreshDownloadTable()
+        }
+    }
+
+    private fun refreshDownloadTable() {
+        SwingUtilities.invokeLater {
+            val scrollPos = downloadTable.visibleRect
+            downloadTableModel.rowCount = 0
+            for (item in downloadList) {
+                val statusText = when (item.status) {
+                    DownloadStatus.DOWNLOADING -> "${item.progress}%"
+                    DownloadStatus.COMPLETED -> "已完成"
+                    DownloadStatus.FAILED -> "失败"
+                }
+                downloadTableModel.addRow(arrayOf(item.fileName, item.fileSize, statusText))
+            }
+            if (scrollPos.y > 0) {
+                downloadTable.scrollRectToVisible(scrollPos)
+            }
+        }
+    }
+
+    private fun startDownloadApk(row: Int) {
+        if (row < 0 || row >= packageExtraInfo.size) return
+        val extra = packageExtraInfo[row]
+        val url = extra.downloadUrl
+        if (url.isEmpty()) {
+            log("该安装包暂无下载链接")
+            return
+        }
+        val version = packageTableModel.getValueAt(row, 0) as? String ?: ""
+        val fileSize = packageTableModel.getValueAt(row, 1) as? String ?: "0"
+        val fileName = "$version.apk"
+        val localPath = downloadDir.resolve(fileName).toString()
+
+        try {
+            Files.createDirectories(downloadDir)
+        } catch (e: Exception) {
+            log("❌ 创建下载目录失败: ${e.message}")
+            return
+        }
+
+        if (Files.exists(Path.of(localPath))) {
+            val result = JOptionPane.showConfirmDialog(
+                this,
+                "文件 $fileName 已存在，是否覆盖？",
+                "文件已存在",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+            )
+            if (result != JOptionPane.YES_OPTION) {
+                log("已取消下载: $fileName")
+                return
+            }
+        }
+
+        val item = DownloadItem(
+            fileName = fileName,
+            fileSize = if (fileSize != "0") "$fileSize MB" else "未知",
+            status = DownloadStatus.DOWNLOADING,
+            progress = 0,
+            downloadUrl = url,
+            localPath = localPath
+        )
+        downloadList.add(item)
+        refreshDownloadTable()
+        log("⬇️ 开始下载: $fileName")
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            doDownload(item)
+        }
+    }
+
+    private fun doDownload(item: DownloadItem) {
+        try {
+            val url = java.net.URL(item.downloadUrl)
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 60_000
+            connection.requestMethod = "GET"
+            connection.connect()
+
+            val contentLength = connection.contentLengthLong
+            val inputStream = connection.inputStream
+            val outputStream = Files.newOutputStream(Path.of(item.localPath))
+
+            val buffer = ByteArray(64 * 1024)
+            var totalRead = 0L
+            var lastUpdateTime = System.currentTimeMillis()
+
+            inputStream.use { input ->
+                outputStream.use { output ->
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
+                        val now = System.currentTimeMillis()
+                        if (now - lastUpdateTime >= 200) {
+                            lastUpdateTime = now
+                            item.progress = if (contentLength > 0) {
+                                (totalRead * 100 / contentLength).toInt()
+                            } else -1
+                            refreshDownloadTable()
+                        }
+                    }
+                }
+            }
+            connection.disconnect()
+
+            item.status = DownloadStatus.COMPLETED
+            item.progress = 100
+            refreshDownloadTable()
+            log("✅ 下载完成: ${item.fileName}")
+
+        } catch (e: Exception) {
+            item.status = DownloadStatus.FAILED
+            refreshDownloadTable()
+            log("❌ 下载失败: ${item.fileName}, ${e.message}")
         }
     }
 
